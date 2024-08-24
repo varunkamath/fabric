@@ -173,8 +173,7 @@ struct SensorConfig {
 #[tokio::main]
 async fn main() -> Result<(), OrchestratorError> {
     println!("Starting control node...");
-    let orchestrator = Arc::new(Orchestrator::new().await?);
-    let cancel = CancellationToken::new();
+    let orchestrator = Arc::new(Orchestrator::new(7447).await?);
 
     // Load configuration
     let config = Orchestrator::load_config("config.yaml").await?;
@@ -197,6 +196,7 @@ async fn main() -> Result<(), OrchestratorError> {
         })
         .await;
 
+    let cancel = tokio_util::sync::CancellationToken::new();
     let run_task = tokio::spawn({
         let orchestrator = orchestrator.clone();
         let cancel = cancel.clone();
