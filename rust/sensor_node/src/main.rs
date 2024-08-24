@@ -148,7 +148,7 @@ mod tests {
     use super::*;
     use tokio::time::timeout;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_read_sensor() {
         let sensor_id = "test-sensor".to_string();
         let data = read_sensor(sensor_id.clone()).await;
@@ -156,14 +156,14 @@ mod tests {
         assert!(data.value >= 0.0 && data.value <= 100.0);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_spawn_sensor() {
         let sensor_id = "test-sensor".to_string();
         let result = timeout(Duration::from_secs(5), spawn_sensor(sensor_id.clone())).await;
         assert!(result.is_err(), "spawn_sensor should run indefinitely");
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_apply_config() {
         let config = SensorConfig {
             sampling_rate: 10,
@@ -174,7 +174,7 @@ mod tests {
         // In a real scenario, you'd want to check if the configuration was actually applied
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_sensor_error() {
         let error = SensorError("Test error".to_string());
         assert_eq!(error.to_string(), "Sensor error: Test error");
