@@ -33,9 +33,13 @@ class Orchestrator:
         self.callbacks = {}
 
     async def initialize(self):
-        conf = config.peer()
-        conf.listen.endpoints.append("tcp/0.0.0.0:7447")
-        self.session = await zenoh.open(conf)
+        try:
+            conf = zenoh.Config()
+            conf.insert_json5("listen", json.dumps({"endpoints": ["tcp/0.0.0.0:7447"]}))
+            self.session = await zenoh.open(conf)
+        except Exception as e:
+            print(f"Failed to initialize Zenoh session: {e}")
+            raise
 
     async def run(self, cancel_event: asyncio.Event):
         subscriber = await self.session.declare_subscriber("sensor/#")
@@ -43,7 +47,7 @@ class Orchestrator:
             if cancel_event.is_set():
                 break
             try:
-                payload = sample.payload.decode("utf-8")
+                payload = await sample.payload.decode("utf-8")
                 data = json.loads(payload)
                 sensor_data = SensorData(**data)
                 await self.update_sensor_state(sensor_data)
@@ -52,13 +56,13 @@ class Orchestrator:
                 print(f"Failed to parse sensor data: {payload}")
 
     async def update_sensor_state(self, data: SensorData):
-        self.sensors[data.sensor_id] = SensorState(data.value)
+        self.sensors[data.sensor_id] = SensorState(value=data.value)
         print(f"Updated sensor {data.sensor_id}: {data.value:.2f}")
 
     async def trigger_callbacks(self, data: SensorData):
         callback = self.callbacks.get(data.sensor_id)
         if callback:
-            callback(data)
+            await callback(data)
 
     def subscribe_to_sensor(self, sensor_id: str, callback):
         self.callbacks[sensor_id] = callback
