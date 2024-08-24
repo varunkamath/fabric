@@ -56,7 +56,7 @@ class SensorNode:
 
     async def run(self):
         conf = zenoh.Config()
-        conf.insert_json5(zenoh.config.PEER_KEY, self.zenoh_peer)
+        conf.insert_json5("peer", self.zenoh_peer)  # Use "peer" instead of zenoh.config.PEER_KEY
 
         async with zenoh.open(conf) as session:
             publish_task = asyncio.create_task(self.publish_sensor_data(session))

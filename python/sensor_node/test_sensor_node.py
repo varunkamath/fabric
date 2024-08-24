@@ -33,8 +33,13 @@ async def test_publish_sensor_data(sensor_node):
     mock_publisher = AsyncMock()
     mock_session.declare_publisher.return_value = mock_publisher
 
-    sensor_node.cancel_event.set()  # To ensure the function exits immediately
+    async def delayed_cancel():
+        await asyncio.sleep(0.1)
+        sensor_node.cancel_event.set()
+
+    cancel_task = asyncio.create_task(delayed_cancel())
     await sensor_node.publish_sensor_data(mock_session)
+    await cancel_task
 
     mock_session.declare_publisher.assert_called_once_with("sensor/data")
     mock_publisher.put.assert_called()
@@ -48,11 +53,15 @@ async def test_subscribe_to_config(sensor_node):
 
     mock_change = AsyncMock()
     mock_change.value.payload = b'{"sampling_rate": 15, "threshold": 80.0}'
-    mock_subscriber.receiver.return_value.__aiter__.return_value = [mock_change]
+    
+    async def mock_receiver():
+        yield mock_change
+
+    mock_subscriber.receiver = mock_receiver
 
     await sensor_node.subscribe_to_config(mock_session)
 
-    mock_session.declare_subscriber.assert_called_once_with("sensor/test-sensor/config")
+    mock_session.declare_subscriber.assert_called_once_with(f"sensor/{sensor_node.sensor_id}/config")
     assert sensor_node.config.sampling_rate == 15
     assert sensor_node.config.threshold == 80.0
 
