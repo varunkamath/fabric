@@ -78,7 +78,7 @@ async def test_run(sensor_node):
         async def mock_receiver():
             yield AsyncMock()  # Yield a mock change object
 
-        mock_subscriber.receiver.return_value = mock_receiver()
+        mock_subscriber.receiver.return_value.__aiter__ = mock_receiver
 
         run_task = asyncio.create_task(sensor_node.run())
         await asyncio.sleep(0.1)  # Give some time for the run method to start
