@@ -19,11 +19,16 @@ class SensorConfig:
 
 
 class SensorNode:
-    def __init__(self, sensor_id: str, zenoh_peer: str):
+    def __init__(self, sensor_id, zenoh_peer):
         self.sensor_id = sensor_id
         self.zenoh_peer = zenoh_peer
-        self.config = SensorConfig(sampling_rate=5, threshold=50.0)
+        self.config = SensorConfig(sampling_rate=5, threshold=50.0)  # Default config
         self.cancel_event = asyncio.Event()
+
+    def apply_config(self, new_config):
+        self.config = new_config
+        print(f"Applying new configuration: {self.config}")
+        # Add logic to apply configuration to sensor hardware or behavior
 
     async def read_sensor(self) -> SensorData:
         await asyncio.sleep(1)  # Simulate sensor read time
@@ -48,10 +53,6 @@ class SensorNode:
                 self.apply_config()
             except json.JSONDecodeError:
                 print(f"Failed to parse configuration: {change.value.payload}")
-
-    def apply_config(self):
-        print(f"Applying new configuration: {self.config}")
-        # Add logic to apply configuration to sensor hardware or behavior
 
     async def run(self):
         conf = zenoh.Config()

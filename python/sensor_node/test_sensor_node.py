@@ -19,9 +19,12 @@ async def test_read_sensor(sensor_node):
 
 @pytest.mark.asyncio
 async def test_apply_config(sensor_node):
+    initial_config = sensor_node.config
     new_config = SensorConfig(sampling_rate=10, threshold=75.0)
     sensor_node.apply_config(new_config)
-    assert sensor_node.config == new_config
+    assert sensor_node.config != initial_config
+    assert sensor_node.config.sampling_rate == 10
+    assert sensor_node.config.threshold == 75.0
 
 
 @pytest.mark.asyncio
