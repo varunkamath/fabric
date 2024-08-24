@@ -1,4 +1,4 @@
-### Fabric: Framework Agnostically Bridging Resilient Interconnected Components
+# Fabric: Framework Agnostically Bridging Resilient Interconnected Components
 
 Fabric is a distributed sensor network system that demonstrates the integration of multiple sensor nodes with a central control node using the Zenoh communication framework. This project showcases the interoperability between Rust and Python implementations, containerization with Docker, and deployment using Kubernetes.
 

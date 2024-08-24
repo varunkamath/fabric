@@ -40,10 +40,10 @@ struct Orchestrator {
 }
 
 impl Orchestrator {
-    async fn new() -> Result<Self, OrchestratorError> {
+    async fn new(port: u16) -> Result<Self, OrchestratorError> {
         let mut config = config::peer();
         config.listen.endpoints.push(
-            "tcp/0.0.0.0:7447"
+            format!("tcp/0.0.0.0:{}", port)
                 .parse::<EndPoint>()
                 .map_err(|e| OrchestratorError(e.to_string()))?,
         );
@@ -229,17 +229,15 @@ async fn main() -> Result<(), OrchestratorError> {
 mod tests {
     use super::*;
 
-    // Update the test attribute to use multi-thread runtime
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_orchestrator_new() {
-        let result = Orchestrator::new().await;
+        let result = Orchestrator::new(7448).await;
         assert!(result.is_ok());
     }
 
-    // Update the test attribute to use multi-thread runtime
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_update_sensor_state() {
-        let orchestrator = Orchestrator::new().await.unwrap();
+        let orchestrator = Orchestrator::new(7449).await.unwrap();
         let data = SensorData {
             sensor_id: "test-sensor".to_string(),
             value: 42.0,
@@ -251,10 +249,9 @@ mod tests {
         assert_eq!(state.last_value, data.value);
     }
 
-    // Update the test attribute to use multi-thread runtime
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_publish_sensor_config() {
-        let orchestrator = Orchestrator::new().await.unwrap();
+        let orchestrator = Orchestrator::new(7450).await.unwrap();
         let sensor_id = "test-sensor";
         let config = SensorConfig {
             sampling_rate: 10,
