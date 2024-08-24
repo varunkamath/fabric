@@ -45,7 +45,10 @@ class SensorNode:
     async def subscribe_to_config(self, session: zenoh.Session):
         key = f"sensor/{self.sensor_id}/config"
         sub = await session.declare_subscriber(key)
-        async for change in sub.receiver():
+        receiver = sub.receiver()
+        if asyncio.iscoroutine(receiver):
+            receiver = await receiver
+        async for change in receiver:
             try:
                 config_dict = json.loads(change.value.payload.decode("utf-8"))
                 new_config = SensorConfig(**config_dict)

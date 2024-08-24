@@ -28,9 +28,7 @@ jobs:
         run: ruff check .
 
       - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
+        run: rustup toolchain install stable --profile minimal
 
       - name: Lint Rust code
         run: cargo clippy -- -D warnings
