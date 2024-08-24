@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, mock_open
-from main import Orchestrator, SensorData, SensorConfig
+from python.control_node.main import Orchestrator, SensorData, SensorConfig
 
 @pytest.fixture
 def orchestrator():

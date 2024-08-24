@@ -36,10 +36,18 @@ jobs:
       - name: Run Rust tests
         run: cargo test
 
+      - name: Check Python file structure
+        run: |
+          echo "Directory structure:"
+          tree python
+          echo "Checking for test files:"
+          ls -l python/sensor_node/test_sensor_node.py
+          ls -l python/control_node/test_control_node.py
+
       - name: Run Python tests
         run: |
-          pytest python/sensor_node/test_sensor_node.py
-          pytest python/control_node/test_control_node.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest -v python/sensor_node/test_sensor_node.py
+          PYTHONPATH=$PYTHONPATH:$(pwd) pytest -v python/control_node/test_control_node.py
 
   build-docker:
     runs-on: ubuntu-latest

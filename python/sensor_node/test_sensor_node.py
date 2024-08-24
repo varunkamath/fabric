@@ -1,7 +1,7 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
-from main import SensorNode, SensorData, SensorConfig
+from python.sensor_node.main import SensorNode, SensorData, SensorConfig
 
 @pytest.fixture
 def sensor_node():
