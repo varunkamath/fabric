@@ -37,7 +37,9 @@ jobs:
         run: cargo test
 
       - name: Run Python tests
-        run: pytest python/
+        run: |
+          pytest python/sensor_node/test_sensor_node.py
+          pytest python/control_node/test_control_node.py
 
   build-docker:
     runs-on: ubuntu-latest
