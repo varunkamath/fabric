@@ -3,9 +3,11 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 from python.sensor_node.main import SensorNode, SensorData, SensorConfig
 
+
 @pytest.fixture
 def sensor_node():
     return SensorNode("test-sensor", "tcp/localhost:7447")
+
 
 @pytest.mark.asyncio
 async def test_read_sensor(sensor_node):
@@ -14,11 +16,13 @@ async def test_read_sensor(sensor_node):
     assert data.sensor_id == "test-sensor"
     assert 0 <= data.value <= 100
 
+
 @pytest.mark.asyncio
 async def test_apply_config(sensor_node):
     new_config = SensorConfig(sampling_rate=10, threshold=75.0)
     sensor_node.apply_config(new_config)
     assert sensor_node.config == new_config
+
 
 @pytest.mark.asyncio
 async def test_publish_sensor_data(sensor_node):
@@ -31,6 +35,7 @@ async def test_publish_sensor_data(sensor_node):
 
     mock_session.declare_publisher.assert_called_once_with("sensor/data")
     mock_publisher.put.assert_called()
+
 
 @pytest.mark.asyncio
 async def test_subscribe_to_config(sensor_node):
@@ -48,9 +53,10 @@ async def test_subscribe_to_config(sensor_node):
     assert sensor_node.config.sampling_rate == 15
     assert sensor_node.config.threshold == 80.0
 
+
 @pytest.mark.asyncio
 async def test_run(sensor_node):
-    with patch('zenoh.open') as mock_zenoh_open:
+    with patch("zenoh.open") as mock_zenoh_open:
         mock_session = AsyncMock()
         mock_zenoh_open.return_value.__aenter__.return_value = mock_session
 
