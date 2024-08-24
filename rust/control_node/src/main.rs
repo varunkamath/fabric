@@ -228,15 +228,16 @@ async fn main() -> Result<(), OrchestratorError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::timeout;
 
-    #[tokio::test]
+    // Update the test attribute to use multi-thread runtime
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_orchestrator_new() {
         let result = Orchestrator::new().await;
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    // Update the test attribute to use multi-thread runtime
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_update_sensor_state() {
         let orchestrator = Orchestrator::new().await.unwrap();
         let data = SensorData {
@@ -250,7 +251,8 @@ mod tests {
         assert_eq!(state.last_value, data.value);
     }
 
-    #[tokio::test]
+    // Update the test attribute to use multi-thread runtime
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn test_publish_sensor_config() {
         let orchestrator = Orchestrator::new().await.unwrap();
         let sensor_id = "test-sensor";
