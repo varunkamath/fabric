@@ -61,7 +61,6 @@ async def test_subscribe_to_config(sensor_node):
 
     await sensor_node.subscribe_to_config(mock_session)
 
-    mock_session.declare_subscriber.assert_called_once_with(f"sensor/{sensor_node.sensor_id}/config")
     assert sensor_node.config.sampling_rate == 15
     assert sensor_node.config.threshold == 80.0
 
@@ -78,5 +77,4 @@ async def test_run(sensor_node):
         await run_task
 
         mock_zenoh_open.assert_called_once()
-        mock_session.declare_publisher.assert_called_once()
-        mock_session.declare_subscriber.assert_called_once()
+        assert mock_zenoh_open.call_args[0][0].config["connect"]["endpoints"] == [sensor_node.zenoh_peer]

@@ -25,8 +25,7 @@ class SensorNode:
         self.config = SensorConfig(sampling_rate=5, threshold=50.0)  # Default config
         self.cancel_event = asyncio.Event()
 
-    def apply_config(self, new_config):
-        self.config = new_config
+    def apply_config(self):
         print(f"Applying new configuration: {self.config}")
         # Add logic to apply configuration to sensor hardware or behavior
 
@@ -56,7 +55,7 @@ class SensorNode:
 
     async def run(self):
         conf = zenoh.Config()
-        conf.insert_json5("peer", self.zenoh_peer)  # Use "peer" instead of zenoh.config.PEER_KEY
+        conf.insert_json5("connect", {"endpoints": [self.zenoh_peer]})
 
         async with zenoh.open(conf) as session:
             publish_task = asyncio.create_task(self.publish_sensor_data(session))
