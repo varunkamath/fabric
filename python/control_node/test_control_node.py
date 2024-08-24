@@ -1,6 +1,5 @@
 import pytest
 import asyncio
-import time
 from unittest.mock import AsyncMock, patch, mock_open
 from python.control_node.main import Orchestrator, SensorData, SensorConfig, SensorState
 
@@ -49,9 +48,6 @@ async def test_subscribe_to_sensor(orchestrator):
 
 @pytest.mark.asyncio
 async def test_monitor_sensors(orchestrator):
-    from python.control_node.main import SensorState
-    import time
-
     orchestrator.sensors["test-sensor"] = SensorState(value=42.0)
     cancel_event = asyncio.Event()
     monitor_task = asyncio.create_task(orchestrator.monitor_sensors(cancel_event))
@@ -92,7 +88,9 @@ async def test_run(orchestrator):
     orchestrator.session.declare_subscriber.return_value = mock_subscriber
 
     mock_sample = AsyncMock()
-    mock_sample.payload.decode.return_value = '{"sensor_id": "test-sensor", "value": 42.0}'
+    mock_sample.payload.decode.return_value = (
+        '{"sensor_id": "test-sensor", "value": 42.0}'
+    )
 
     async def mock_receiver():
         yield mock_sample

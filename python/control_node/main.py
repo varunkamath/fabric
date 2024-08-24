@@ -4,7 +4,6 @@ import yaml
 from dataclasses import dataclass
 from typing import Dict, Any
 import zenoh
-from zenoh import config
 import time
 
 

@@ -51,7 +51,11 @@ class SensorNode:
         async for change in receiver:
             try:
                 if isinstance(change.value.payload, (str, bytes, bytearray)):
-                    config_dict = json.loads(change.value.payload.decode("utf-8") if isinstance(change.value.payload, (bytes, bytearray)) else change.value.payload)
+                    config_dict = json.loads(
+                        change.value.payload.decode("utf-8")
+                        if isinstance(change.value.payload, (bytes, bytearray))
+                        else change.value.payload
+                    )
                     new_config = SensorConfig(**config_dict)
                     print(f"Received new configuration: {new_config}")
                     self.apply_config(new_config)

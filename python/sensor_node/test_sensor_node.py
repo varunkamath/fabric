@@ -53,7 +53,7 @@ async def test_subscribe_to_config(sensor_node):
 
     mock_change = AsyncMock()
     mock_change.value.payload = b'{"sampling_rate": 15, "threshold": 80.0}'
-    
+
     async def mock_receiver():
         yield mock_change
 
@@ -93,4 +93,6 @@ async def test_run(sensor_node):
         assert mock_json_dumps.call_count == 2
         mock_json_dumps.assert_any_call({"endpoints": [sensor_node.zenoh_peer]})
         # Check for the second call with any dictionary containing 'sensor_id' and 'value'
-        mock_json_dumps.assert_any_call({'sensor_id': sensor_node.sensor_id, 'value': ANY})
+        mock_json_dumps.assert_any_call(
+            {"sensor_id": sensor_node.sensor_id, "value": ANY}
+        )
