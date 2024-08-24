@@ -48,9 +48,9 @@ class SensorNode:
         async for change in sub.receiver():
             try:
                 config_dict = json.loads(change.value.payload.decode("utf-8"))
-                self.config = SensorConfig(**config_dict)
-                print(f"Received new configuration: {self.config}")
-                self.apply_config()
+                new_config = SensorConfig(**config_dict)
+                print(f"Received new configuration: {new_config}")
+                self.apply_config(new_config)
             except json.JSONDecodeError:
                 print(f"Failed to parse configuration: {change.value.payload}")
 

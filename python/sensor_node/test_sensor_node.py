@@ -72,6 +72,14 @@ async def test_run(sensor_node):
         mock_zenoh_open.return_value.__aenter__.return_value = mock_session
         mock_json_dumps.return_value = '{"endpoints": ["tcp/localhost:7447"]}'
 
+        mock_subscriber = AsyncMock()
+        mock_session.declare_subscriber.return_value = mock_subscriber
+
+        async def mock_receiver():
+            yield AsyncMock()  # Yield a mock change object
+
+        mock_subscriber.receiver.return_value = mock_receiver()
+
         run_task = asyncio.create_task(sensor_node.run())
         await asyncio.sleep(0.1)  # Give some time for the run method to start
         sensor_node.cancel_event.set()  # Signal the run method to stop
