@@ -1,0 +1,114 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rust-sensor-nodes
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: rust-sensor-node
+  template:
+    metadata:
+      labels:
+        app: rust-sensor-node
+    spec:
+      containers:
+        - name: rust-sensor-node
+          image: rust_sensor_node:latest
+          imagePullPolicy: Never
+          env:
+            - name: SENSOR_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ZENOH_PEER
+              value: "tcp/control-node-service:7447"
+            - name: NUM_SENSORS
+              value: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-sensor-nodes
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: python-sensor-node
+  template:
+    metadata:
+      labels:
+        app: python-sensor-node
+    spec:
+      containers:
+        - name: python-sensor-node
+          image: python_sensor_node:latest
+          imagePullPolicy: Never
+          env:
+            - name: SENSOR_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ZENOH_PEER
+              value: "tcp/control-node-service:7447"
+            - name: NUM_SENSORS
+              value: "1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: control-node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: control-node
+  template:
+    metadata:
+      labels:
+        app: control-node
+    spec:
+      containers:
+        - name: control-node
+          image: rust_control_node:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 7447
+          volumeMounts:
+            - name: config-volume
+              mountPath: /usr/local/bin/config.yaml
+              subPath: config.yaml
+      volumes:
+        - name: config-volume
+          configMap:
+            name: control-node-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: control-node-config
+data:
+  config.yaml: |
+    sensors:
+      sensor1:
+        sampling_rate: 5
+        threshold: 50.0
+      sensor2:
+        sampling_rate: 10
+        threshold: 75.0
+      sensor3:
+        sampling_rate: 15
+        threshold: 25.0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-node-service
+spec:
+  selector:
+    app: control-node
+  ports:
+    - protocol: TCP
+      port: 7447
+      targetPort: 7447
