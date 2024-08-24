@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, ANY
 from python.sensor_node.main import SensorNode, SensorData, SensorConfig
 
 
@@ -75,8 +75,12 @@ async def test_run(sensor_node):
         mock_subscriber = AsyncMock()
         mock_session.declare_subscriber.return_value = mock_subscriber
 
+        mock_change = AsyncMock()
+        mock_change.value = AsyncMock()
+        mock_change.value.payload = b'{"sampling_rate": 10, "threshold": 75.0}'
+
         async def mock_receiver():
-            yield AsyncMock()  # Yield a mock change object
+            yield mock_change
 
         mock_subscriber.receiver = mock_receiver
 
@@ -86,4 +90,7 @@ async def test_run(sensor_node):
         await run_task
 
         mock_zenoh_open.assert_called_once()
-        mock_json_dumps.assert_called_once_with({"endpoints": [sensor_node.zenoh_peer]})
+        assert mock_json_dumps.call_count == 2
+        mock_json_dumps.assert_any_call({"endpoints": [sensor_node.zenoh_peer]})
+        # Check for the second call with any dictionary containing 'sensor_id' and 'value'
+        mock_json_dumps.assert_any_call({'sensor_id': sensor_node.sensor_id, 'value': ANY})

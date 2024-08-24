@@ -50,12 +50,17 @@ class SensorNode:
             receiver = await receiver
         async for change in receiver:
             try:
-                config_dict = json.loads(change.value.payload.decode("utf-8"))
-                new_config = SensorConfig(**config_dict)
-                print(f"Received new configuration: {new_config}")
-                self.apply_config(new_config)
+                if isinstance(change.value.payload, (str, bytes, bytearray)):
+                    config_dict = json.loads(change.value.payload.decode("utf-8") if isinstance(change.value.payload, (bytes, bytearray)) else change.value.payload)
+                    new_config = SensorConfig(**config_dict)
+                    print(f"Received new configuration: {new_config}")
+                    self.apply_config(new_config)
+                else:
+                    print(f"Unexpected payload type: {type(change.value.payload)}")
             except json.JSONDecodeError:
                 print(f"Failed to parse configuration: {change.value.payload}")
+            except Exception as e:
+                print(f"Error processing configuration: {e}")
 
     async def run(self):
         conf = zenoh.Config()
