@@ -1,0 +1,64 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff pytest
+
+      - name: Lint Python code
+        run: ruff check .
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Lint Rust code
+        run: cargo clippy -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test
+
+      - name: Run Python tests
+        run: pytest python/
+
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Rust sensor node
+        run: |
+          docker build -t rust_sensor_node_dependencies:latest -f rust/docker/sensor_dependencies.Dockerfile .
+          docker build -t rust_sensor_node:latest -f rust/docker/sensor_package.Dockerfile .
+
+      - name: Build Python sensor node
+        run: |
+          docker build -t python_sensor_node_dependencies:latest -f python/docker/sensor_dependencies.Dockerfile .
+          docker build -t python_sensor_node:latest -f python/docker/sensor_package.Dockerfile .
+
+      - name: Build control node
+        run: |
+          docker build -t rust_control_node_dependencies:latest -f rust/docker/control_dependencies.Dockerfile .
+          docker build -t rust_control_node:latest -f rust/docker/control_package.Dockerfile .
