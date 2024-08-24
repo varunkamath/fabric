@@ -29,3 +29,7 @@ composer_log.txt
 
 # Pre-commit prettier
 node_modules/
+
+# Python
+**/*.pyc
+**/__pycache__
