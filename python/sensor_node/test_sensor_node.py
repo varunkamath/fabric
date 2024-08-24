@@ -67,9 +67,10 @@ async def test_subscribe_to_config(sensor_node):
 
 @pytest.mark.asyncio
 async def test_run(sensor_node):
-    with patch("zenoh.open") as mock_zenoh_open:
+    with patch("zenoh.open") as mock_zenoh_open, patch("json.dumps") as mock_json_dumps:
         mock_session = AsyncMock()
         mock_zenoh_open.return_value.__aenter__.return_value = mock_session
+        mock_json_dumps.return_value = '{"endpoints": ["tcp/localhost:7447"]}'
 
         run_task = asyncio.create_task(sensor_node.run())
         await asyncio.sleep(0.1)  # Give some time for the run method to start
@@ -77,4 +78,4 @@ async def test_run(sensor_node):
         await run_task
 
         mock_zenoh_open.assert_called_once()
-        assert mock_zenoh_open.call_args[0][0].config["connect"]["endpoints"] == [sensor_node.zenoh_peer]
+        mock_json_dumps.assert_called_once_with({"endpoints": [sensor_node.zenoh_peer]})
