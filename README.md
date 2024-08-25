@@ -1,4 +1,6 @@
-# Fabric: Framework Agnostically Bridging Resilient Interconnected Components
+# fabric
+
+## Framework Agnostically Bridging Resilient Interconnected Components
 
 ![CI Status](https://github.com/varunkamath/fabric/workflows/Continuous%20Integration/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
