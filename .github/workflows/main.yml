@@ -88,7 +88,12 @@ jobs:
           docker build -t python_sensor_node_dependencies:latest -f python/docker/sensor_dependencies.Dockerfile .
           docker build -t python_sensor_node:latest -f python/docker/sensor_package.Dockerfile .
 
-      - name: Build control node
+      - name: Build Rust control node
         run: |
           docker build -t rust_control_node_dependencies:latest -f rust/docker/control_dependencies.Dockerfile .
           docker build -t rust_control_node:latest -f rust/docker/control_package.Dockerfile .
+
+      - name: Build Python control node
+        run: |
+          docker build -t python_control_node_dependencies:latest -f python/docker/control_dependencies.Dockerfile .
+          docker build -t python_control_node:latest -f python/docker/control_package.Dockerfile .
