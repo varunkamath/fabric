@@ -49,7 +49,9 @@ class Orchestrator:
                 payload = await sample.payload.decode("utf-8")
                 data = json.loads(payload)
                 sensor_data = SensorData(**data)
-                print(f"Control node received data from sensor {sensor_data.sensor_id}: {sensor_data.value:.2f}")  # Add this line
+                print(
+                    f"Control node received data from sensor {sensor_data.sensor_id}: {sensor_data.value:.2f}"
+                )  # Add this line
                 await self.update_sensor_state(sensor_data)
                 await self.trigger_callbacks(sensor_data)
             except json.JSONDecodeError:

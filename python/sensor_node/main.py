@@ -39,7 +39,9 @@ class SensorNode:
         while not self.cancel_event.is_set():
             data = await self.read_sensor()
             payload = json.dumps(dataclass_to_dict(data))
-            print(f"Sensor {self.sensor_id} publishing data: {data.value:.2f}")  # Add this line
+            print(
+                f"Sensor {self.sensor_id} publishing data: {data.value:.2f}"
+            )  # Add this line
             pub.put(payload)
             await asyncio.sleep(self.config.sampling_rate)
 
@@ -83,7 +85,7 @@ class SensorNode:
         except Exception as e:
             print(f"Error opening Zenoh session: {e}")
         finally:
-            if 'session' in locals():
+            if "session" in locals():
                 session.close()
 
 
