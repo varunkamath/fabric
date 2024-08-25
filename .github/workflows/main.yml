@@ -8,19 +8,35 @@ on:
   workflow_dispatch: # Add this line to enable manual triggers
 
 jobs:
-  lint-and-test:
+  rust-ci:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'workflow_dispatch' ||
       (
-        !contains(github.event.head_commit.modified, 'Dockerfile') &&
-        (
-          contains(github.event.head_commit.modified, 'python/') ||
-          contains(github.event.head_commit.modified, 'rust/') ||
-          contains(github.event.head_commit.modified, 'Cargo.toml') ||
-          contains(github.event.head_commit.modified, 'Cargo.lock') ||
-          contains(github.event.head_commit.modified, '.github/workflows/main.yml')
-        )
+        contains(github.event.head_commit.modified, 'rust/') ||
+        contains(github.event.head_commit.modified, 'Cargo.toml') ||
+        contains(github.event.head_commit.modified, 'Cargo.lock') ||
+        contains(github.event.head_commit.modified, '.github/workflows/main.yml')
+      )
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Rust
+        run: rustup toolchain install stable --profile minimal
+
+      - name: Lint Rust code
+        run: cargo clippy -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test
+
+  python-ci:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        contains(github.event.head_commit.modified, 'python/') ||
+        contains(github.event.head_commit.modified, '.github/workflows/main.yml')
       )
     steps:
       - uses: actions/checkout@v3
@@ -40,15 +56,6 @@ jobs:
       - name: Lint Python code
         run: ruff check .
 
-      - name: Set up Rust
-        run: rustup toolchain install stable --profile minimal
-
-      - name: Lint Rust code
-        run: cargo clippy -- -D warnings
-
-      - name: Run Rust tests
-        run: cargo test
-
       - name: Check Python file structure
         run: |
           echo "Directory structure:"
@@ -61,44 +68,3 @@ jobs:
         run: |
           PYTHONPATH=$PYTHONPATH:$(pwd) pytest -v python/sensor_node/test_sensor_node.py
           PYTHONPATH=$PYTHONPATH:$(pwd) pytest -v python/control_node/test_control_node.py
-
-  build-docker:
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.head_commit.modified, 'Dockerfile') ||
-      contains(github.event.head_commit.modified, 'python/') ||
-      contains(github.event.head_commit.modified, 'rust/') ||
-      contains(github.event.head_commit.modified, 'Cargo.toml') ||
-      contains(github.event.head_commit.modified, 'Cargo.lock') ||
-      contains(github.event.head_commit.modified, '.github/workflows/main.yml')
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Print directory structure
-        run: |
-          pwd
-          ls -R
-
-      - name: Build Rust sensor node
-        run: |
-          docker build -t rust_sensor_node_dependencies:latest -f rust/docker/sensor_dependencies.Dockerfile .
-          docker build -t rust_sensor_node:latest -f rust/docker/sensor_package.Dockerfile .
-
-      - name: Build Python sensor node
-        run: |
-          docker build -t python_sensor_node_dependencies:latest -f python/docker/sensor_dependencies.Dockerfile .
-          docker build -t python_sensor_node:latest -f python/docker/sensor_package.Dockerfile .
-
-      - name: Build Rust control node
-        run: |
-          docker build -t rust_control_node_dependencies:latest -f rust/docker/control_dependencies.Dockerfile .
-          docker build -t rust_control_node:latest -f rust/docker/control_package.Dockerfile .
-
-      - name: Build Python control node
-        run: |
-          docker build -t python_control_node_dependencies:latest -f python/docker/control_dependencies.Dockerfile .
-          docker build -t python_control_node:latest -f python/docker/control_package.Dockerfile .
