@@ -9,7 +9,7 @@ COPY --from=base-image /app/vendor /app/vendor
 COPY --from=base-image /app/.cargo /app/.cargo
 
 # Copy our actual source code
-COPY control_node /app
+COPY rust/control_node /app
 
 # Build our application
 WORKDIR /app

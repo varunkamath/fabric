@@ -9,7 +9,7 @@ COPY --from=base-image /app/vendor /app/vendor
 COPY --from=base-image /app/.cargo /app/.cargo
 
 # Copy our actual source code
-COPY sensor_node /app
+COPY rust/sensor_node /app
 
 # Build our application
 WORKDIR /app
