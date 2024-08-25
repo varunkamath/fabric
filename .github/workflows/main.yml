@@ -19,7 +19,7 @@ jobs:
         contains(github.event.head_commit.modified, '.github/workflows/main.yml')
       )
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Rust
         run: rustup toolchain install stable --profile minimal
@@ -39,12 +39,12 @@ jobs:
         contains(github.event.head_commit.modified, '.github/workflows/main.yml')
       )
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.x"
+          python-version: "3.12"
 
       - name: Install Python dependencies
         run: |
