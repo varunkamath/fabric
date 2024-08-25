@@ -1,6 +1,6 @@
 # Fabric: Framework Agnostically Bridging Resilient Interconnected Components
 
-![CI Status](https://github.com/yourusername/fabric/workflows/Continuous%20Integration/badge.svg)
+![CI Status](https://github.com/varunkamath/fabric/workflows/Continuous%20Integration/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Python Version](https://img.shields.io/badge/python-3.x-blue.svg)
 ![Rust Version](https://img.shields.io/badge/rust-stable-orange.svg)
