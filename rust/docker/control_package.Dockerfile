@@ -4,12 +4,12 @@ FROM rust_control_node_dependencies:latest AS base-image
 # Use the rust image as the builder
 FROM rust:1.80.1 AS builder
 
+# Copy our actual source code
+COPY rust/control_node /app
+
 # Copy the vendored dependencies from the base image
 COPY --from=base-image /app/vendor /app/vendor
 COPY --from=base-image /app/.cargo /app/.cargo
-
-# Copy our actual source code
-COPY rust/control_node /app
 
 # Build our application
 WORKDIR /app

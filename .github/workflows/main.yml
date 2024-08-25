@@ -5,19 +5,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch: # Add this line to enable manual triggers
+  workflow_dispatch:
 
 jobs:
   rust-ci:
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (
-        contains(github.event.head_commit.modified, 'rust/') ||
-        contains(github.event.head_commit.modified, 'Cargo.toml') ||
-        contains(github.event.head_commit.modified, 'Cargo.lock') ||
-        contains(github.event.head_commit.modified, '.github/workflows/main.yml')
-      )
     steps:
       - uses: actions/checkout@v4
 
@@ -32,12 +24,6 @@ jobs:
 
   python-ci:
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (
-        contains(github.event.head_commit.modified, 'python/') ||
-        contains(github.event.head_commit.modified, '.github/workflows/main.yml')
-      )
     steps:
       - uses: actions/checkout@v4
 

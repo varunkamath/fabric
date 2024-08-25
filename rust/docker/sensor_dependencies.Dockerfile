@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     pkg-config \
     libssl-dev \
+    lld \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust
@@ -25,11 +26,14 @@ COPY rust/sensor_node/Cargo.toml rust/sensor_node/Cargo.lock ./
 # Create a dummy src/main.rs file
 RUN mkdir src && echo "fn main() {println!(\"Hello, world!\");}" > src/main.rs
 
+# Build dependencies to ensure they are all downloaded
+RUN cargo build --release
+
 # Use cargo vendor to download and cache dependencies
 RUN mkdir .cargo
 RUN cargo vendor > .cargo/config.toml
 
-# Remove the dummy src directory
-RUN rm -rf src
+# Remove the dummy src directory and target directory
+RUN rm -rf src target
 
 # The resulting image will have all dependencies downloaded and cached
