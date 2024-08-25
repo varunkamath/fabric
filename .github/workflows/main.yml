@@ -1,4 +1,4 @@
-name: Build and test all components
+name: CI / CD
 
 on:
   push:

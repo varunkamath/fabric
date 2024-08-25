@@ -1,6 +1,6 @@
 # fabric
 
-![CI Status](https://github.com/varunkamath/fabric/workflows/Continuous%20Integration/badge.svg)
+![CI Status](https://github.com/varunkamath/fabric/workflows/CI%20%2F%20CD/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Python Version](https://img.shields.io/badge/python-3.12.5-blue.svg)
 ![Rust Version](https://img.shields.io/badge/rust-1.80.1-orange.svg)
