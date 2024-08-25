@@ -26,7 +26,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 
 # Copy our requirements file
-COPY sensor_node/requirements.txt .
+COPY python/sensor_node/requirements.txt .
 
 # Install Python dependencies
 RUN uv pip install --no-cache-dir -r requirements.txt

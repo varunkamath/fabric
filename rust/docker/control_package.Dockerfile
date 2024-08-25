@@ -22,7 +22,7 @@ FROM base-image
 COPY --from=builder /app/target/release/control_node /usr/local/bin/control_node
 
 # Copy the config file
-COPY control_node/config.yaml /usr/local/bin/config.yaml
+COPY rust/control_node/config.yaml /usr/local/bin/config.yaml
 
 # Set the entrypoint to our application
 ENTRYPOINT ["control_node"]
