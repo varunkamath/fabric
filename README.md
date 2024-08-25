@@ -1,11 +1,11 @@
 # fabric
 
-#### Framework Agnostically Bridging Resilient Interconnected Components
-
 ![CI Status](https://github.com/varunkamath/fabric/workflows/Continuous%20Integration/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Python Version](https://img.shields.io/badge/python-3.12.5-blue.svg)
 ![Rust Version](https://img.shields.io/badge/rust-1.80.1-orange.svg)
+
+#### Framework Agnostically Bridging Resilient Interconnected Components
 
 `fabric` is a distributed sensor network system that demonstrates the integration of multiple sensor nodes with a central control node using the Zenoh communication framework. This project showcases the interoperability between Rust and Python implementations, containerization with Docker, and deployment using Kubernetes.
 
