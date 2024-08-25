@@ -41,7 +41,7 @@ class Orchestrator:
             raise
 
     async def run(self, cancel_event: asyncio.Event):
-        subscriber = await self.session.declare_subscriber("sensor/**")
+        subscriber = await self.session.declare_subscriber("sensor/#")
         async for sample in subscriber.receiver():
             if cancel_event.is_set():
                 break

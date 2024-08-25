@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt;
@@ -101,26 +102,26 @@ fn apply_config(config: SensorConfig) {
 }
 
 // Remove or comment out the spawn_sensor function
-// async fn spawn_sensor(sensor_id: String) -> Result<(), SensorError> {
-//     println!("Spawned sensor: {}", sensor_id);
+async fn spawn_sensor(sensor_id: String) -> Result<(), SensorError> {
+    println!("Spawned sensor: {}", sensor_id);
 
-//     let config = zenoh::config::peer();
-//     let session = Arc::new(
-//         zenoh::open(config)
-//             .res()
-//             .await
-//             .map_err(|e| SensorError(e.to_string()))?,
-//     );
+    let config = zenoh::config::peer();
+    let session = Arc::new(
+        zenoh::open(config)
+            .res()
+            .await
+            .map_err(|e| SensorError(e.to_string()))?,
+    );
 
-//     let cancel = CancellationToken::new();
+    let cancel = CancellationToken::new();
 
-//     tokio::try_join!(
-//         publish_sensor_data(Arc::clone(&session), sensor_id.clone(), cancel.clone()),
-//         subscribe_to_config(Arc::clone(&session), sensor_id)
-//     )?;
+    tokio::try_join!(
+        publish_sensor_data(Arc::clone(&session), sensor_id.clone(), cancel.clone()),
+        subscribe_to_config(Arc::clone(&session), sensor_id)
+    )?;
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> Result<(), SensorError> {

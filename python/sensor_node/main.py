@@ -35,20 +35,18 @@ class SensorNode:
         return SensorData(sensor_id=self.sensor_id, value=random.uniform(0, 100))
 
     async def publish_sensor_data(self, session: zenoh.Session):
-        pub = session.declare_publisher("sensor/data")
+        pub = await session.declare_publisher("sensor/data")
         while not self.cancel_event.is_set():
             data = await self.read_sensor()
             payload = json.dumps(dataclass_to_dict(data))
-            print(
-                f"Sensor {self.sensor_id} publishing data: {data.value:.2f}"
-            )  # Add this line
-            pub.put(payload)
+            print(f"Sensor {self.sensor_id} publishing data: {data.value:.2f}")
+            await pub.put(payload)  # Add 'await' here
             await asyncio.sleep(self.config.sampling_rate)
 
     async def subscribe_to_config(self, session: zenoh.Session):
         key = f"sensor/{self.sensor_id}/config"
-        sub = session.declare_subscriber(key)
-        async for change in sub.receiver():
+        sub = await session.declare_subscriber(key)
+        async for change in sub.receiver:
             try:
                 if isinstance(change.payload, (str, bytes, bytearray)):
                     config_dict = json.loads(
@@ -61,6 +59,11 @@ class SensorNode:
                     self.apply_config(new_config)
                 else:
                     print(f"Unexpected payload type: {type(change.payload)}")
+                    # Try to decode the payload directly
+                    config_dict = json.loads(change.payload)
+                    new_config = SensorConfig(**config_dict)
+                    print(f"Received new configuration: {new_config}")
+                    self.apply_config(new_config)
             except json.JSONDecodeError:
                 print(f"Failed to parse configuration: {change.payload}")
             except Exception as e:
@@ -68,10 +71,11 @@ class SensorNode:
 
     async def run(self):
         conf = zenoh.Config()
-        conf.insert_json5("connect", json.dumps({"endpoints": [self.zenoh_peer]}))
+        endpoints = json.dumps({"endpoints": [self.zenoh_peer]})
+        conf.insert_json5("connect", endpoints)
 
         try:
-            session = zenoh.open(conf)
+            session = await zenoh.open(conf)
             publish_task = asyncio.create_task(self.publish_sensor_data(session))
             config_task = asyncio.create_task(self.subscribe_to_config(session))
 
@@ -86,7 +90,7 @@ class SensorNode:
             print(f"Error opening Zenoh session: {e}")
         finally:
             if "session" in locals():
-                session.close()
+                await session.close()
 
 
 def dataclass_to_dict(obj):

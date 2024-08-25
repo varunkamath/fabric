@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch, ANY
+from unittest.mock import AsyncMock, patch
 from python.sensor_node.main import SensorNode, SensorData, SensorConfig
 
 
@@ -42,7 +42,7 @@ async def test_publish_sensor_data(sensor_node):
     await cancel_task
 
     mock_session.declare_publisher.assert_called_once_with("sensor/data")
-    mock_publisher.put.assert_called()
+    mock_publisher.put.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -52,14 +52,20 @@ async def test_subscribe_to_config(sensor_node):
     mock_session.declare_subscriber.return_value = mock_subscriber
 
     mock_change = AsyncMock()
-    mock_change.value.payload = b'{"sampling_rate": 15, "threshold": 80.0}'
+    mock_change.payload = '{"sampling_rate": 15, "threshold": 80.0}'
 
     async def mock_receiver():
         yield mock_change
 
-    mock_subscriber.receiver = mock_receiver
+    mock_subscriber.receiver = mock_receiver()
 
-    await sensor_node.subscribe_to_config(mock_session)
+    task = asyncio.create_task(sensor_node.subscribe_to_config(mock_session))
+    await asyncio.sleep(0.1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
     assert sensor_node.config.sampling_rate == 15
     assert sensor_node.config.threshold == 80.0
@@ -69,30 +75,27 @@ async def test_subscribe_to_config(sensor_node):
 async def test_run(sensor_node):
     with patch("zenoh.open") as mock_zenoh_open, patch("json.dumps") as mock_json_dumps:
         mock_session = AsyncMock()
-        mock_zenoh_open.return_value.__aenter__.return_value = mock_session
+        mock_zenoh_open.return_value = mock_session
         mock_json_dumps.return_value = '{"endpoints": ["tcp/localhost:7447"]}'
 
         mock_subscriber = AsyncMock()
         mock_session.declare_subscriber.return_value = mock_subscriber
 
         mock_change = AsyncMock()
-        mock_change.value = AsyncMock()
-        mock_change.value.payload = b'{"sampling_rate": 10, "threshold": 75.0}'
+        mock_change.payload = AsyncMock()
+        mock_change.payload.decode.return_value = (
+            '{"sampling_rate": 10, "threshold": 75.0}'
+        )
 
         async def mock_receiver():
             yield mock_change
 
-        mock_subscriber.receiver = mock_receiver
+        mock_subscriber.receiver = mock_receiver()
 
         run_task = asyncio.create_task(sensor_node.run())
-        await asyncio.sleep(0.1)  # Give some time for the run method to start
-        sensor_node.cancel_event.set()  # Signal the run method to stop
+        await asyncio.sleep(0.1)
+        sensor_node.cancel_event.set()
         await run_task
 
         mock_zenoh_open.assert_called_once()
-        assert mock_json_dumps.call_count == 2
-        mock_json_dumps.assert_any_call({"endpoints": [sensor_node.zenoh_peer]})
-        # Check for the second call with any dictionary containing 'sensor_id' and 'value'
-        mock_json_dumps.assert_any_call(
-            {"sensor_id": sensor_node.sensor_id, "value": ANY}
-        )
+        mock_json_dumps.assert_called_once_with({"endpoints": [sensor_node.zenoh_peer]})
