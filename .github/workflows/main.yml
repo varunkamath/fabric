@@ -58,6 +58,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: Print directory structure
+        run: |
+          pwd
+          ls -R
+
       - name: Build Rust sensor node
         run: |
           docker build -t rust_sensor_node_dependencies:latest -f rust/docker/sensor_dependencies.Dockerfile .

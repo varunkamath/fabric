@@ -20,7 +20,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /app
 
 # Copy our Cargo.toml and Cargo.lock
-COPY sensor_node/Cargo.toml sensor_node/Cargo.lock ./
+COPY rust/sensor_node/Cargo.toml rust/sensor_node/Cargo.lock ./
 
 # Create a dummy src/main.rs file
 RUN mkdir src && echo "fn main() {println!(\"Hello, world!\");}" > src/main.rs
