@@ -2,9 +2,13 @@ name: CI / CD
 
 on:
   push:
-    branches: [main]
+    paths:
+      - "python/**"
+      - "rust/**"
   pull_request:
-    branches: [main]
+    paths:
+      - "python/**"
+      - "rust/**"
   workflow_dispatch: # Add this line to enable manual triggers
 
 jobs:
