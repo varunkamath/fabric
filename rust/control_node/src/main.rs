@@ -63,16 +63,17 @@ impl Orchestrator {
     async fn run(&self, cancel: CancellationToken) -> Result<(), OrchestratorError> {
         let subscriber = self
             .session
-            .declare_subscriber("sensor/#")
+            .declare_subscriber("sensor/**")
             .res()
             .await
-            .map_err(|e| OrchestratorError(e.to_string()))?;
+            .map_err(|e| OrchestratorError(format!("Failed to declare subscriber: {}", e)))?;
 
         while !cancel.is_cancelled() {
             tokio::select! {
                 Ok(sample) = subscriber.recv_async() => {
                     if let Ok(payload) = std::str::from_utf8(&sample.value.payload.contiguous()) {
                         if let Ok(data) = serde_json::from_str::<SensorData>(payload) {
+                            println!("Control node received data from sensor {}: {:.2}", data.sensor_id, data.value); // Add this line
                             self.update_sensor_state(data.clone()).await;
                             self.trigger_callbacks(data).await;
                         }
@@ -88,12 +89,13 @@ impl Orchestrator {
 
     async fn update_sensor_state(&self, data: SensorData) {
         let mut sensors = self.sensors.lock().await;
-        sensors
-            .entry(data.sensor_id.clone())
-            .or_insert(SensorState {
+        sensors.insert(
+            data.sensor_id.clone(),
+            SensorState {
                 last_value: data.value,
                 last_update: std::time::Instant::now(),
-            });
+            },
+        );
 
         println!("Updated sensor {}: {:.2}", data.sensor_id, data.value);
     }
@@ -176,7 +178,7 @@ async fn main() -> Result<(), OrchestratorError> {
     let orchestrator = Arc::new(Orchestrator::new(7447).await?);
 
     // Load configuration
-    let config = Orchestrator::load_config("config.yaml").await?;
+    let config = Orchestrator::load_config("/app/config.yaml").await?;
 
     // Publish configurations to sensors
     for (sensor_id, sensor_config) in &config.sensors {
@@ -187,7 +189,7 @@ async fn main() -> Result<(), OrchestratorError> {
 
     // Subscribe to all sensors
     orchestrator
-        .subscribe_to_sensor("sensor/#", |data| {
+        .subscribe_to_sensor("sensor/**", |data| {
             println!(
                 "Received data from sensor {}: {:.2}",
                 data.sensor_id, data.value

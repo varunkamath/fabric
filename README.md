@@ -74,8 +74,10 @@
 2. Set up Minikube to use its Docker daemon:
 
    ```
-   eval $(minikube docker-env)
+   eval $(minikube -p minikube docker-env)
    ```
+
+   You may need to rebuild above images here, as pull policy is set to `Never`
 
 3. Apply the local Kubernetes configuration:
 

@@ -13,4 +13,4 @@ serde_yaml = "0.9"
 
 [dev-dependencies]
 tokio = { version = "1.39", features = ["full", "test-util"] }
-tempfile = "3.2"
+tempfile = "3.12"

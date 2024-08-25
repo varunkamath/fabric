@@ -13,7 +13,7 @@ COPY rust/sensor_node /app
 
 # Build our application
 WORKDIR /app
-RUN cargo build --release --offline
+RUN cargo build --release --offline --jobs 8
 
 # Create a new stage for a smaller final image
 FROM base-image

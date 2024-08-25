@@ -1,20 +1,21 @@
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: rust-sensor-nodes
+  name: rust-sensor
 spec:
+  serviceName: "rust-sensor"
   replicas: 4
   selector:
     matchLabels:
-      app: rust-sensor-node
+      app: rust-sensor
   template:
     metadata:
       labels:
-        app: rust-sensor-node
+        app: rust-sensor
     spec:
       containers:
-        - name: rust-sensor-node
+        - name: rust-sensor
           image: rust_sensor_node:latest
           imagePullPolicy: Never
           env:
@@ -24,25 +25,24 @@ spec:
                   fieldPath: metadata.name
             - name: ZENOH_PEER
               value: "tcp/control-node-service:7447"
-            - name: NUM_SENSORS
-              value: "1"
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: python-sensor-nodes
+  name: python-sensor
 spec:
+  serviceName: "python-sensor"
   replicas: 4
   selector:
     matchLabels:
-      app: python-sensor-node
+      app: python-sensor
   template:
     metadata:
       labels:
-        app: python-sensor-node
+        app: python-sensor
     spec:
       containers:
-        - name: python-sensor-node
+        - name: python-sensor
           image: python_sensor_node:latest
           imagePullPolicy: Never
           env:
@@ -52,37 +52,47 @@ spec:
                   fieldPath: metadata.name
             - name: ZENOH_PEER
               value: "tcp/control-node-service:7447"
-            - name: NUM_SENSORS
-              value: "1"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: control-node
+  name: control-node-rust
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: control-node
+      app: control-node-rust
   template:
     metadata:
       labels:
-        app: control-node
+        app: control-node-rust
     spec:
       containers:
-        - name: control-node
+        - name: control-node-rust
           image: rust_control_node:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 7447
           volumeMounts:
             - name: config-volume
-              mountPath: /usr/local/bin/config.yaml
+              mountPath: /app/config.yaml
               subPath: config.yaml
       volumes:
         - name: config-volume
           configMap:
             name: control-node-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: control-node-service
+spec:
+  selector:
+    app: control-node-rust
+  ports:
+    - protocol: TCP
+      port: 7447
+      targetPort: 7447
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -91,24 +101,15 @@ metadata:
 data:
   config.yaml: |
     sensors:
-      sensor1:
+      rust-sensor-0:
         sampling_rate: 5
         threshold: 50.0
-      sensor2:
+      rust-sensor-1:
         sampling_rate: 10
         threshold: 75.0
-      sensor3:
+      python-sensor-0:
         sampling_rate: 15
         threshold: 25.0
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: control-node-service
-spec:
-  selector:
-    app: control-node
-  ports:
-    - protocol: TCP
-      port: 7447
-      targetPort: 7447
+      python-sensor-1:
+        sampling_rate: 20
+        threshold: 100.0

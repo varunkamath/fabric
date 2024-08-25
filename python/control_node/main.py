@@ -41,7 +41,7 @@ class Orchestrator:
             raise
 
     async def run(self, cancel_event: asyncio.Event):
-        subscriber = await self.session.declare_subscriber("sensor/#")
+        subscriber = await self.session.declare_subscriber("sensor/**")
         async for sample in subscriber.receiver():
             if cancel_event.is_set():
                 break
@@ -49,6 +49,7 @@ class Orchestrator:
                 payload = await sample.payload.decode("utf-8")
                 data = json.loads(payload)
                 sensor_data = SensorData(**data)
+                print(f"Control node received data from sensor {sensor_data.sensor_id}: {sensor_data.value:.2f}")  # Add this line
                 await self.update_sensor_state(sensor_data)
                 await self.trigger_callbacks(sensor_data)
             except json.JSONDecodeError:
@@ -112,7 +113,7 @@ async def main():
 
     # Subscribe to all sensors
     orchestrator.subscribe_to_sensor(
-        "sensor/#",
+        "sensor/**",
         lambda data: print(
             f"Received data from sensor {data.sensor_id}: {data.value:.2f}"
         ),

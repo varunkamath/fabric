@@ -53,6 +53,7 @@ async fn publish_sensor_data(
     while !cancel.is_cancelled() {
         let data = read_sensor(sensor_id.clone()).await;
         let payload = serde_json::to_string(&data).map_err(|e| SensorError(e.to_string()))?;
+        println!("Sensor {} publishing data: {:.2}", sensor_id, data.value); // Add this line
         publisher
             .put(payload)
             .res()
@@ -99,45 +100,57 @@ fn apply_config(config: SensorConfig) {
     println!("Applying new configuration: {:?}", config);
 }
 
-async fn spawn_sensor(sensor_id: String) -> Result<(), SensorError> {
-    println!("Spawned sensor: {}", sensor_id);
+// Remove or comment out the spawn_sensor function
+// async fn spawn_sensor(sensor_id: String) -> Result<(), SensorError> {
+//     println!("Spawned sensor: {}", sensor_id);
 
-    let config = zenoh::config::peer();
-    let session = Arc::new(
-        zenoh::open(config)
-            .res()
-            .await
-            .map_err(|e| SensorError(e.to_string()))?,
-    );
+//     let config = zenoh::config::peer();
+//     let session = Arc::new(
+//         zenoh::open(config)
+//             .res()
+//             .await
+//             .map_err(|e| SensorError(e.to_string()))?,
+//     );
 
-    let cancel = CancellationToken::new();
+//     let cancel = CancellationToken::new();
 
-    tokio::try_join!(
-        publish_sensor_data(Arc::clone(&session), sensor_id.clone(), cancel.clone()),
-        subscribe_to_config(Arc::clone(&session), sensor_id)
-    )?;
+//     tokio::try_join!(
+//         publish_sensor_data(Arc::clone(&session), sensor_id.clone(), cancel.clone()),
+//         subscribe_to_config(Arc::clone(&session), sensor_id)
+//     )?;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 #[tokio::main]
 async fn main() -> Result<(), SensorError> {
-    let node_name = env::var("NODE_NAME").unwrap_or_else(|_| "unknown".to_string());
-    let num_sensors = env::var("NUM_SENSORS")
-        .unwrap_or_else(|_| "1".to_string())
-        .parse::<usize>()
+    let sensor_id = env::var("SENSOR_ID").unwrap_or_else(|_| "unknown".to_string());
+    let zenoh_peer = env::var("ZENOH_PEER").unwrap_or_else(|_| "tcp/localhost:7447".to_string());
+
+    println!("Starting sensor node with ID: {}", sensor_id);
+    println!("Connecting to Zenoh peer: {}", zenoh_peer);
+
+    let mut config = zenoh::config::Config::default();
+    config
+        .set_mode(Some(zenoh::config::whatami::WhatAmI::Client))
+        .unwrap();
+    config.connect.endpoints.push(zenoh_peer.parse().unwrap());
+
+    let session = zenoh::open(config)
+        .res()
+        .await
         .map_err(|e| SensorError(e.to_string()))?;
 
-    let mut handles = vec![];
+    let cancel = CancellationToken::new();
+    let session = Arc::new(session);
 
-    for i in 0..num_sensors {
-        let sensor_id = format!("{}-sensor-{}", node_name, i);
-        let handle = tokio::spawn(spawn_sensor(sensor_id));
-        handles.push(handle);
-    }
-
-    for handle in handles {
-        handle.await.map_err(|e| SensorError(e.to_string()))??;
+    tokio::select! {
+        _ = publish_sensor_data(session.clone(), sensor_id.clone(), cancel.clone()) => {},
+        _ = subscribe_to_config(session.clone(), sensor_id.clone()) => {},
+        _ = tokio::signal::ctrl_c() => {
+            println!("Received Ctrl+C, shutting down...");
+            cancel.cancel();
+        }
     }
 
     Ok(())

@@ -4,3 +4,4 @@ members = [
     "rust/control_node",
     "rust/sensor_node",
 ]
+resolver = "2"
