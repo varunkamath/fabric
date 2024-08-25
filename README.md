@@ -118,9 +118,89 @@
    ```
 
 3. To interact with the control node service:
+
    ```
    kubectl port-forward service/control-node-service 7447:7447
    ```
+
+4. Using k9s:
+
+   k9s is a terminal-based UI to interact with your Kubernetes clusters. It's a powerful tool for managing and monitoring your Kubernetes resources.
+
+   To install k9s, follow the instructions on the [official k9s GitHub page](https://github.com/derailed/k9s).
+
+   To use k9s:
+
+   ```
+   k9s
+   ```
+
+   This will open the k9s interface. You can navigate through your resources, view logs, and execute commands directly from this interface.
+
+## Changing Configurations
+
+To change the sensor configurations:
+
+1. Edit the `config.yaml` section in the `local-sensor-network.yaml` file.
+2. Apply the changes:
+   ```
+   kubectl apply -f local-sensor-network.yaml
+   ```
+3. The control node will automatically publish the new configurations to the sensors.
+
+## Custom Local Deployment
+
+To set up a custom local deployment with a specific number of hosts and sensors per host:
+
+1. Edit the `local-sensor-network.yaml` file:
+
+   - Adjust the `replicas` field in the `rust-sensor` and `python-sensor` StatefulSets to set the number of sensors per type.
+   - Add or remove sensor configurations in the `control-node-config` ConfigMap.
+
+2. Create a custom `values.yaml` file for Helm:
+
+   ```yaml
+   hosts:
+     - name: host1
+       sensors:
+         rust: 2
+         python: 2
+     - name: host2
+       sensors:
+         rust: 3
+         python: 1
+     # Add more hosts as needed
+
+   controlNode:
+     replicas: 1
+
+   sensorConfig:
+     rust-sensor-0:
+       sampling_rate: 5
+       threshold: 50.0
+     rust-sensor-1:
+       sampling_rate: 10
+       threshold: 75.0
+     # Add more sensor configurations as needed
+   ```
+
+3. Create a Helm chart:
+
+   ```
+   helm create fabric-chart
+   ```
+
+4. Replace the contents of `fabric-chart/templates/deployment.yaml` with your modified `local-sensor-network.yaml`, using Helm templating syntax to make it dynamic based on the `values.yaml`.
+
+5. Deploy your custom configuration:
+
+   ```
+   helm install fabric ./fabric-chart -f values.yaml
+   ```
+
+This approach allows you to easily customize the number of hosts, sensors per host, and their configurations using a single `values.yaml` file.
+
+Remember to adjust your Dockerfiles and build processes if you need to make changes to the sensor or control node implementations.
 
 ## Cleaning Up
 
