@@ -2,8 +2,8 @@
 
 members = [
     "rust/fabric",
-    "rust/examples/example_control_node",
-    "rust/examples/example_sensor_node",
+    "rust/examples/example_orchestrator",
+    "rust/examples/example_node",
 ]
 resolver = "2"
 

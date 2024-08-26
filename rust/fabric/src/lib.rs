@@ -1,6 +1,6 @@
-pub mod control;
 pub mod error;
+pub mod node;
+pub mod orchestrator;
 pub mod plugins;
-pub mod sensor;
 
 pub use error::{FabricError, Result};
