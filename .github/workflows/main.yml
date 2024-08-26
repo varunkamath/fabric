@@ -14,13 +14,21 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Rust
-        run: rustup toolchain install stable --profile minimal
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup component add rustfmt clippy
+
+      - name: Format Rust code
+        run: cargo fmt --all -- --check
 
       - name: Lint Rust code
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build Rust library
+        run: cargo build --verbose
 
       - name: Run Rust tests
-        run: cargo test
+        run: cargo test --verbose
 
   python-ci:
     runs-on: ubuntu-latest

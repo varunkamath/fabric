@@ -1,0 +1,10 @@
+[package]
+name = "example_control_node"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fabric = { path = "../../fabric" }
+tokio = { version = "1.39", features = ["full"] }
+tokio-util = "0.7"
+serde_json = "1.0"

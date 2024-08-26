@@ -1,8 +1,9 @@
 [workspace]
 
 members = [
-    "rust/control_node",
-    "rust/sensor_node",
+    "rust/fabric",
+    "rust/examples/example_control_node",
+    "rust/examples/example_sensor_node",
 ]
 resolver = "2"
 
