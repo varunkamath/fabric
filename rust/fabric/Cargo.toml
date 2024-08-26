@@ -1,0 +1,28 @@
+[package]
+name = "fabric"
+version = "0.1.0"
+edition = "2021"
+authors = ["Varun Kamath <varun.kamath@example.com>"]
+description = "A library for building sensor networks with control nodes"
+license = "MIT"
+
+[dependencies]
+async-trait = "0.1"
+tokio = { version = "1.39", features = ["full"] }
+tokio-util = "0.7"
+rand = "0.8"
+zenoh = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+lazy_static = "1.4.0"
+
+[dev-dependencies]
+tokio = { version = "1.39", features = ["full", "test-util", "rt-multi-thread"] }
+
+[profile.release]
+debug = 0
+
+[lib]
+name = "fabric"
+path = "src/lib.rs"
