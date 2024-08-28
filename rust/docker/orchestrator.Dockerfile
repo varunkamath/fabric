@@ -1,11 +1,11 @@
 # Use the dependencies image as the base
-FROM rust_sensor_node_dependencies:latest AS base-image
+FROM rust_control_node_dependencies:latest AS base-image
 
 # Use the rust image as the builder
 FROM rust:1.80.1 AS builder
 
 # Copy our actual source code
-COPY rust/sensor_node /app
+COPY rust/examples/example_orchestrator /app
 
 # Copy the vendored dependencies from the base image
 COPY --from=base-image /app/vendor /app/vendor
@@ -19,7 +19,10 @@ RUN cargo build --release --offline --jobs 8
 FROM base-image
 
 # Copy the built executable from the builder stage
-COPY --from=builder /app/target/release/sensor_node /usr/local/bin/sensor_node
+COPY --from=builder /app/target/release/example_orchestrator /usr/local/bin/example_orchestrator
+
+# Copy the config file
+COPY rust/examples/example_orchestrator/config.yaml /usr/local/bin/config.yaml
 
 # Set the entrypoint to our application
-ENTRYPOINT ["sensor_node"]
+ENTRYPOINT ["example_orchestrator"]

@@ -3,7 +3,7 @@ use fabric::node::interface::NodeConfig;
 use fabric::node::Node;
 use fabric::orchestrator::Orchestrator;
 use fabric::FabricError;
-use log::{info, LevelFilter};
+use log::{info, warn, LevelFilter};
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 use tokio::time::{sleep, Duration};
@@ -144,9 +144,12 @@ async fn test_node_config_publication() -> fabric::Result<()> {
     match tokio::time::timeout(Duration::from_secs(5), config_updated.notified()).await {
         Ok(_) => info!("Config update received successfully"),
         Err(_) => {
+            warn!("Timeout waiting for config update");
+            let current_config = node.get_config().await;
+            info!("Current node config: {:?}", current_config);
             return Err(FabricError::Other(
                 "Timeout waiting for config update".into(),
-            ))
+            ));
         }
     }
 

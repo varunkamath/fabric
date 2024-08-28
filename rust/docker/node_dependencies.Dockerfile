@@ -20,11 +20,14 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Create a directory for our application
 WORKDIR /app
 
-# Copy our Cargo.toml and Cargo.lock
-COPY rust/sensor_node/Cargo.toml rust/sensor_node/Cargo.lock ./
+# Copy our Cargo.toml
+COPY rust/examples/example_node/Cargo.toml ./
 
 # Create a dummy src/main.rs file
 RUN mkdir src && echo "fn main() {println!(\"Hello, world!\");}" > src/main.rs
+
+# Add local dependency `fabric`
+COPY rust/fabric/Cargo.toml ./
 
 # Build dependencies to ensure they are all downloaded
 RUN cargo build --release

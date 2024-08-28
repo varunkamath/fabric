@@ -30,7 +30,7 @@ impl Node {
         node_type: String,
         config: NodeConfig,
         session: Arc<zenoh::Session>,
-        _config_updated_callback: Option<Box<dyn Fn() + Send + Sync>>,
+        config_updated_callback: Option<Box<dyn Fn() + Send + Sync>>,
     ) -> Result<Self> {
         let config_updated = Arc::new(Notify::new());
 
@@ -43,6 +43,7 @@ impl Node {
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             callbacks: Arc::new(Mutex::new(HashMap::new())),
             config_updated,
+            config_updated_callback,
         };
 
         // Create the publisher during initialization
@@ -189,6 +190,7 @@ impl Node {
             let interface = interface.clone();
             let node_id = node_id.clone();
             let config_updated = config_updated.clone();
+            let config_updated_callback = self.config_updated_callback.clone();
             tokio::spawn(async move {
                 info!("Node {} received raw config update: {:?}", node_id, sample);
                 match serde_json::from_slice::<NodeConfig>(&sample.value.payload.contiguous()) {
@@ -201,6 +203,9 @@ impl Node {
                         interface.update_config(config.clone());
                         info!("Node {} updated config successfully", node_id);
                         info!("Node {} notifying config update", node_id);
+                        if let Some(callback) = config_updated_callback {
+                            callback();
+                        }
                         config_updated.notify_one();
                     }
                     Err(e) => {

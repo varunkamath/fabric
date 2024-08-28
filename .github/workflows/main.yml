@@ -2,9 +2,9 @@ name: CI / CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -20,15 +20,31 @@ jobs:
 
       - name: Format Rust code
         run: cargo fmt --all -- --check
+        working-directory: ./rust/fabric
 
       - name: Lint Rust code
         run: cargo clippy --all-targets --all-features -- -D warnings
+        working-directory: ./rust/fabric
 
       - name: Build Rust library
         run: cargo build --verbose
+        working-directory: ./rust/fabric
 
       - name: Run Rust tests
         run: cargo test --verbose
+        working-directory: ./rust/fabric
+
+      - name: Build and test examples
+        run: |
+          for example in rust/examples/*; do
+            if [ -d "$example" ]; then
+              echo "Building and testing $example"
+              cd "$example"
+              cargo build --verbose
+              cargo test --verbose
+              cd -
+            fi
+          done
 
   python-ci:
     runs-on: ubuntu-latest
@@ -49,16 +65,8 @@ jobs:
 
       - name: Lint Python code
         run: ruff check .
-
-      - name: Check Python file structure
-        run: |
-          echo "Directory structure:"
-          tree python
-          echo "Checking for test files:"
-          ls -l python/sensor_node/test_sensor_node.py
-          ls -l python/control_node/test_control_node.py
+        working-directory: ./python
 
       - name: Run Python tests
-        run: |
-          PYTHONPATH=$PYTHONPATH:$(pwd) pytest -v python/sensor_node/test_sensor_node.py
-          PYTHONPATH=$PYTHONPATH:$(pwd) pytest -v python/control_node/test_control_node.py
+        run: pytest
+        working-directory: ./python

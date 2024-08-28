@@ -1,6 +1,8 @@
 use fabric::error::Result;
+use fabric::init_logger;
 use fabric::node::interface::NodeConfig;
-use fabric::orchestrator::{Orchestrator, OrchestratorConfig};
+use fabric::orchestrator::Orchestrator;
+use log::{info, warn};
 use std::env;
 use std::sync::Arc;
 use tokio::time::Duration;
@@ -9,10 +11,12 @@ use zenoh::prelude::r#async::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init_logger(log::LevelFilter::Info);
+
     let orchestrator_id =
         env::var("ORCHESTRATOR_ID").unwrap_or_else(|_| "example_orchestrator".to_string());
 
-    println!("Starting example orchestrator: {}", orchestrator_id);
+    info!("Starting example orchestrator: {}", orchestrator_id);
 
     let config = Config::default();
     let session = Arc::new(zenoh::open(config).res().await?);
@@ -39,15 +43,19 @@ async fn main() -> Result<()> {
         nodes: vec![
             NodeConfig {
                 node_id: "node1".to_string(),
-                sampling_rate: 5,
-                threshold: 50.0,
-                custom_config: serde_json::json!({"radio_config": {"frequency": 915.0}}),
+                config: serde_json::json!({
+                    "sampling_rate": 5,
+                    "threshold": 50.0,
+                    "radio_config": {"frequency": 915.0}
+                }),
             },
             NodeConfig {
                 node_id: "node2".to_string(),
-                sampling_rate: 10,
-                threshold: 75.0,
-                custom_config: serde_json::json!({"radio_config": {"frequency": 2400.0}}),
+                config: serde_json::json!({
+                    "sampling_rate": 10,
+                    "threshold": 75.0,
+                    "radio_config": {"frequency": 2400.0}
+                }),
             },
         ],
     };
@@ -61,15 +69,19 @@ async fn main() -> Result<()> {
         let new_configs = vec![
             NodeConfig {
                 node_id: "node1".to_string(),
-                sampling_rate: 7,
-                threshold: 60.0,
-                custom_config: serde_json::json!({"radio_config": {"frequency": 915.0}}),
+                config: serde_json::json!({
+                    "sampling_rate": 7,
+                    "threshold": 60.0,
+                    "radio_config": {"frequency": 915.0}
+                }),
             },
             NodeConfig {
                 node_id: "node2".to_string(),
-                sampling_rate: 12,
-                threshold: 80.0,
-                custom_config: serde_json::json!({"radio_config": {"frequency": 2400.0}}),
+                config: serde_json::json!({
+                    "sampling_rate": 12,
+                    "threshold": 80.0,
+                    "radio_config": {"frequency": 2400.0}
+                }),
             },
         ];
 

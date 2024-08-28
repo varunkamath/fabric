@@ -21,7 +21,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /app
 
 # Copy our Cargo.toml and Cargo.lock
-COPY rust/control_node/Cargo.toml rust/control_node/Cargo.lock ./
+COPY rust/examples/example_orchestrator/Cargo.toml rust/examples/example_orchestrator/Cargo.lock ./
 
 # Create a dummy src/main.rs file
 RUN mkdir src && echo "fn main() {println!(\"Hello, world!\");}" > src/main.rs

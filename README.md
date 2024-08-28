@@ -7,29 +7,32 @@
 
 #### Framework Agnostically Bridging Resilient Interconnected Components
 
-`fabric` is a distributed sensor network system that demonstrates the integration of multiple sensor nodes with a central control node using the Zenoh communication framework. This project showcases the interoperability between Rust and Python implementations, containerization with Docker, and deployment using Kubernetes.
+`fabric` is a distributed sensor network system that demonstrates the integration of multiple sensor nodes with a central control node using the Zenoh communication framework. This project showcases the interoperability between Rust and Python implementations, with a focus on flexibility and extensibility.
 
 ## Project Structure
 
 - `rust/`
-  - `sensor_node/`: Rust implementation of a sensor node
-  - `control_node/`: Rust implementation of the control node
-  - `docker/`: Dockerfiles for Rust components
-- `python/`
+  - `fabric/`: Core Rust library for the fabric system
+    - `src/`: Source code for the fabric library
+    - `tests/`: Integration tests for the fabric library
+  - `examples/`: Example implementations using the fabric library
+    - `example_node/`: Example of a Rust node implementation
+    - `example_orchestrator/`: Example of a Rust orchestrator implementation
+- `python/` (Not implemented in the current codebase)
   - `sensor_node/`: Python implementation of a sensor node
   - `control_node/`: Python implementation of the control node
-  - `docker/`: Dockerfiles for Python components
-- `local-sensor-network.yaml`: Kubernetes configuration for local deployment
-- `distributed-sensor-network.yaml`: Kubernetes configuration for distributed deployment
+- `.github/workflows/`: CI/CD configuration
 
 ## Features
 
-- Multiple sensor nodes (both Rust and Python implementations)
-- Central control node for orchestration
+- Flexible node system with support for different node types (e.g., generic, radio)
+- Central orchestrator for managing and configuring nodes
 - Real-time data publishing and subscription
 - Dynamic configuration updates
-- Containerized deployment using Docker
-- Kubernetes-based orchestration for both local and distributed setups
+- Plugin system for extending node functionality
+- Comprehensive error handling
+- Asynchronous operations using Tokio
+- Integration with the Zenoh communication framework
 
 ## Prerequisites
 
@@ -216,7 +219,3 @@ or
 ```
 kubectl delete -f distributed-sensor-network.yaml
 ```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
