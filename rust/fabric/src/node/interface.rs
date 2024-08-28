@@ -5,19 +5,18 @@ use serde::{Deserialize, Serialize};
 #[async_trait]
 pub trait NodeInterface: Send + Sync {
     async fn read(&self) -> Result<f64>;
+    async fn read_data(&self) -> Result<NodeData>;
     fn get_config(&self) -> NodeConfig;
     fn set_config(&mut self, config: NodeConfig);
     fn get_type(&self) -> String;
     async fn handle_event(&mut self, event: &str, payload: &str) -> Result<()>;
+    fn update_config(&mut self, config: NodeConfig);
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeConfig {
     pub node_id: String,
-    pub sampling_rate: u64,
-    pub threshold: f64,
-    #[serde(flatten)]
-    pub custom_config: serde_json::Value,
+    pub config: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

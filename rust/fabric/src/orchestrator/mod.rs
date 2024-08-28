@@ -20,7 +20,8 @@ pub struct OrchestratorConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::node::interface::NodeData;
+    use crate::orchestrator::Orchestrator;
     use std::sync::Arc;
     use zenoh::prelude::r#async::*;
 
@@ -29,9 +30,11 @@ mod tests {
         let config = zenoh::config::Config::default();
         let session = zenoh::open(config).res().await.unwrap();
 
-        let result = Orchestrator::new("test_orchestrator".to_string(), Arc::new(session)).await;
+        let orchestrator = Orchestrator::new("test_orchestrator".to_string(), Arc::new(session))
+            .await
+            .unwrap();
 
-        assert!(result.is_ok());
+        assert_eq!(orchestrator.get_id(), "test_orchestrator");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
