@@ -258,4 +258,12 @@ impl Node {
         let mut interface = self.interface.lock().await;
         interface.update_config(config);
     }
+
+    pub async fn set_interface(
+        &mut self,
+        interface: Box<dyn NodeInterface + Send + Sync>,
+    ) -> Result<()> {
+        *self.interface.lock().await = interface;
+        Ok(())
+    }
 }
