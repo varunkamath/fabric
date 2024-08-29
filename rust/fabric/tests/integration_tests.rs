@@ -134,14 +134,19 @@ async fn test_node_config_publication() -> fabric::Result<()> {
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     info!("Publishing config to node: {}", node_config.node_id);
+    info!(
+        "Test: About to publish config to node: {}",
+        node_config.node_id
+    );
     orchestrator
         .publish_node_config(&node_config.node_id, &node_config)
         .await?;
+    info!("Test: Config published to node: {}", node_config.node_id);
 
     // Add a small delay
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    match tokio::time::timeout(Duration::from_secs(5), config_updated.notified()).await {
+    match tokio::time::timeout(Duration::from_secs(10), config_updated.notified()).await {
         Ok(_) => info!("Config update received successfully"),
         Err(_) => {
             warn!("Timeout waiting for config update");

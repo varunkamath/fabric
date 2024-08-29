@@ -1,7 +1,6 @@
 use crate::error::{FabricError, Result};
 use crate::node::generic::GenericNode;
 use crate::node::interface::{NodeConfig, NodeData, NodeInterface}; // Add NodeData here
-use flume::Receiver;
 use log::{debug, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -10,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
+use zenoh::prelude::Sample;
 use zenoh::publication::Publisher;
 use zenoh::subscriber::Subscriber;
 
@@ -19,9 +19,10 @@ pub struct Node {
     session: Arc<zenoh::Session>,
     interface: Arc<Mutex<Box<dyn NodeInterface>>>,
     publishers: Arc<Mutex<HashMap<String, Publisher<'static>>>>,
-    subscribers: Arc<Mutex<HashMap<String, Subscriber<'static, Receiver<Sample>>>>>,
+    subscribers: Arc<Mutex<HashMap<String, Subscriber<'static, flume::Receiver<Sample>>>>>,
     callbacks: Arc<Mutex<HashMap<String, Arc<dyn Fn(Sample) + Send + Sync>>>>,
     config_updated: Arc<Notify>,
+    config_updated_callback: Arc<Mutex<Option<Box<dyn Fn() + Send + Sync>>>>, // Wrapped in Arc<Mutex<>>
 }
 
 impl Node {
@@ -43,7 +44,7 @@ impl Node {
             subscribers: Arc::new(Mutex::new(HashMap::new())),
             callbacks: Arc::new(Mutex::new(HashMap::new())),
             config_updated,
-            config_updated_callback,
+            config_updated_callback: Arc::new(Mutex::new(config_updated_callback)), // Wrap in Arc<Mutex<>>
         };
 
         // Create the publisher during initialization
@@ -115,7 +116,10 @@ impl Node {
         topic: &str,
         callback: impl Fn(Sample) + Send + Sync + 'static,
     ) -> Result<()> {
+        info!("Node {} subscribing to topic: {}", self.id, topic);
         let subscriber = self.session.declare_subscriber(topic).res().await?;
+        let receiver = subscriber.receiver.clone();
+
         self.subscribers
             .lock()
             .await
@@ -124,6 +128,35 @@ impl Node {
             .lock()
             .await
             .insert(topic.to_string(), Arc::new(callback));
+
+        let node_id = self.id.clone();
+        let topic_string = topic.to_string();
+        let callbacks = self.callbacks.clone();
+
+        tokio::spawn(async move {
+            info!(
+                "Node {} starting subscription loop for topic: {}",
+                node_id, topic_string
+            );
+            while let Ok(sample) = receiver.recv_async().await {
+                info!(
+                    "Node {} received sample on topic {}: {:?}",
+                    node_id, topic_string, sample
+                );
+                if let Some(callback) = callbacks.lock().await.get(&topic_string) {
+                    callback(sample);
+                }
+            }
+            info!(
+                "Node {} subscription loop ended for topic: {}",
+                node_id, topic_string
+            );
+        });
+
+        info!(
+            "Node {} successfully subscribed to topic: {}",
+            self.id, topic
+        );
         Ok(())
     }
 
@@ -186,11 +219,12 @@ impl Node {
         let interface = self.interface.clone();
         let node_id = self.id.clone();
         let config_updated = self.config_updated.clone();
+        let config_updated_callback = self.config_updated_callback.clone(); // Clone the Arc, not the inner value
         self.subscribe(&config_topic, move |sample| {
             let interface = interface.clone();
             let node_id = node_id.clone();
             let config_updated = config_updated.clone();
-            let config_updated_callback = self.config_updated_callback.clone();
+            let config_updated_callback = config_updated_callback.clone(); // Clone the Arc again
             tokio::spawn(async move {
                 info!("Node {} received raw config update: {:?}", node_id, sample);
                 match serde_json::from_slice::<NodeConfig>(&sample.value.payload.contiguous()) {
@@ -203,7 +237,7 @@ impl Node {
                         interface.update_config(config.clone());
                         info!("Node {} updated config successfully", node_id);
                         info!("Node {} notifying config update", node_id);
-                        if let Some(callback) = config_updated_callback {
+                        if let Some(callback) = config_updated_callback.lock().await.as_ref() {
                             callback();
                         }
                         config_updated.notify_one();
