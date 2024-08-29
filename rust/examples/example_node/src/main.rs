@@ -1,51 +1,60 @@
+use async_trait::async_trait;
 use fabric::error::Result;
-use fabric::node::{interface::NodeConfig, Node};
-use fabric::init_logger;
-use log::{info, warn};
-use std::env;
-use std::sync::Arc;
-use tokio_util::sync::CancellationToken;
-use zenoh::prelude::r#async::*;
+use fabric::node::interface::{NodeConfig, NodeData, NodeInterface};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    init_logger(log::LevelFilter::Info);
+pub struct ExampleNode {
+    pub config: NodeConfig,
+}
 
-    let node_id = env::var("NODE_ID").unwrap_or_else(|_| "example_node".to_string());
-    let node_type = env::var("NODE_TYPE").unwrap_or_else(|_| "generic".to_string());
+#[async_trait]
+impl NodeInterface for ExampleNode {
+    async fn read_data(&self) -> Result<NodeData> {
+        Ok(NodeData {
+            node_id: self.config.node_id.clone(),
+            node_type: "example".to_string(),
+            value: rand::random::<f64>(),
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            metadata: Some(serde_json::json!({
+                "example_data": "Some value",
+                "timestamp": chrono::Utc::now().timestamp(),
+            })),
+        })
+    }
 
-    info!("Starting example node: {}", node_id);
+    fn get_config(&self) -> NodeConfig {
+        self.config.clone()
+    }
 
-    let config = Config::default();
-    let session = Arc::new(zenoh::open(config).res().await?);
+    fn update_config(&mut self, new_config: NodeConfig) {
+        self.config = new_config;
+    }
 
-    let node_config = NodeConfig {
-        node_id: node_id.clone(),
-        config: serde_json::json!({
-            "sampling_rate": 1,
-            "threshold": 50.0
-        }),
-    };
+    async fn read(&self) -> Result<f64> {
+        Ok(rand::random::<f64>())
+    }
 
-    let node = Node::new(node_id.clone(), node_type, node_config, session.clone()).await?;
+    fn set_config(&mut self, config: NodeConfig) {
+        self.config = config;
+    }
 
-    // Subscribe to another node
-    node.subscribe_to_node("other_node", |data| {
-        println!("Received data from other_node: {:?}", data);
-    }).await?;
+    fn get_type(&self) -> String {
+        "example".to_string()
+    }
 
-    // Subscribe to a custom topic
-    node.subscribe_to_topic("custom/topic", |sample| {
-        println!("Received data on custom topic: {:?}", sample);
-    }).await?;
+    async fn handle_event(&mut self, topic: &str, payload: &str) -> Result<()> {
+        println!(
+            "Received event on topic '{}' with payload: {}",
+            topic, payload
+        );
+        Ok(())
+    }
+}
 
-    let cancel = CancellationToken::new();
-    println!("Node {} is running...", node_id);
-    node.run(cancel.clone()).await?;
-
-    // Unsubscribe when done
-    node.unsubscribe_from_node("other_node").await?;
-    node.unsubscribe_from_topic("custom/topic").await?;
-
-    Ok(())
+#[allow(dead_code)]
+fn main() {
+    println!("Example Node");
 }
