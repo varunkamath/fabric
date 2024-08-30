@@ -221,7 +221,7 @@ async fn test_node_failure_and_recovery() -> fabric::Result<()> {
     let node_cancel = CancellationToken::new();
     let node_cancel_clone = node_cancel.clone();
     let node_clone = node.clone();
-    let node_handle = tokio::spawn(async move {
+    let _node_handle = tokio::spawn(async move {
         node_clone.run(node_cancel_clone).await.unwrap();
     });
 
@@ -400,7 +400,7 @@ async fn test_multi_node_config_application() -> fabric::Result<()> {
     }
 
     // Update configurations
-    for (node, config) in &mut nodes {
+    for (_node, config) in &mut nodes {
         let mut new_config = config.clone();
         let mut json_config: serde_json::Value =
             serde_json::from_value(config.config.clone()).unwrap();
