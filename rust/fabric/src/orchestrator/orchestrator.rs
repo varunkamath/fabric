@@ -6,7 +6,9 @@ use log::{debug, info, warn};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::Mutex;
+use tokio::time::interval;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
@@ -41,6 +43,25 @@ impl Orchestrator {
         // Subscribe to all node status topics
         self.subscribe_to_node_statuses().await?;
 
+        // Start a task to check for offline nodes
+        let offline_check_task = {
+            let self_clone = self.clone();
+            let cancel_clone = cancel.clone();
+            tokio::spawn(async move {
+                let mut interval = interval(Duration::from_secs(1));
+                loop {
+                    tokio::select! {
+                        _ = cancel_clone.cancelled() => {
+                            break;
+                        }
+                        _ = interval.tick() => {
+                            self_clone.check_offline_nodes().await;
+                        }
+                    }
+                }
+            })
+        };
+
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
@@ -52,6 +73,11 @@ impl Orchestrator {
 
         // Unsubscribe from node status topics
         self.unsubscribe_from_node_statuses().await?;
+
+        // Wait for the offline check task to complete
+        offline_check_task
+            .await
+            .map_err(|e| FabricError::Other(format!("Offline check task error: {}", e)))?;
 
         info!("Orchestrator {} shutdown complete", self.id);
 
@@ -279,5 +305,27 @@ impl Orchestrator {
         let mut callbacks = self.callbacks.lock().await;
         callbacks.insert(node_id.to_string(), callback);
         Ok(())
+    }
+
+    async fn check_offline_nodes(&self) {
+        let mut nodes = self.nodes.lock().await;
+        let now = SystemTime::now();
+        for (node_id, node_state) in nodes.iter_mut() {
+            if node_state.last_value.status == "online" {
+                if let Ok(duration) = now.duration_since(node_state.last_update) {
+                    if duration > Duration::from_secs(10) {
+                        warn!("Node {} has not sent a status update in 10 seconds, marking as offline", node_id);
+                        node_state.last_value.status = "offline".to_string();
+
+                        // Trigger callbacks for the status change
+                        let callbacks = self.callbacks.lock().await;
+                        if let Some(callback) = callbacks.get(node_id) {
+                            let callback = callback.lock().await;
+                            callback(node_state.last_value.clone());
+                        }
+                    }
+                }
+            }
+        }
     }
 }

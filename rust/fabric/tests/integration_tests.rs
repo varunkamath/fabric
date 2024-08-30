@@ -13,7 +13,7 @@ use zenoh::prelude::r#async::*;
 use zenoh::Session;
 
 async fn wait_for_node_initialization() {
-    sleep(Duration::from_millis(5000)).await;
+    sleep(Duration::from_millis(500)).await;
 }
 
 async fn create_zenoh_session() -> Arc<Session> {
@@ -182,8 +182,9 @@ async fn test_node_failure_and_recovery() -> fabric::Result<()> {
     init_logger(LevelFilter::Info);
 
     let session = create_zenoh_session().await;
-    let orchestrator =
-        Arc::new(Orchestrator::new("test_orchestrator".to_string(), session.clone()).await?);
+    let orchestrator = Arc::new(
+        Orchestrator::new("test_failure_orchestrator".to_string(), session.clone()).await?,
+    );
 
     let node_config = NodeConfig {
         node_id: "failing_node".to_string(),
@@ -205,19 +206,23 @@ async fn test_node_failure_and_recovery() -> fabric::Result<()> {
         .await?,
     );
 
-    let cancel = CancellationToken::new();
-    let orchestrator_cancel = cancel.clone();
+    let orchestrator_cancel = CancellationToken::new();
+    let orchestrator_cancel_clone = orchestrator_cancel.clone();
     let orchestrator_clone = orchestrator.clone();
     let orchestrator_handle = tokio::spawn(async move {
-        orchestrator_clone.run(orchestrator_cancel).await.unwrap();
+        orchestrator_clone
+            .run(orchestrator_cancel_clone)
+            .await
+            .unwrap();
     });
 
     wait_for_node_initialization().await;
 
-    let node_cancel = cancel.clone();
+    let node_cancel = CancellationToken::new();
+    let node_cancel_clone = node_cancel.clone();
     let node_clone = node.clone();
     let node_handle = tokio::spawn(async move {
-        node_clone.run(node_cancel).await.unwrap();
+        node_clone.run(node_cancel_clone).await.unwrap();
     });
 
     wait_for_node_initialization().await;
@@ -226,25 +231,11 @@ async fn test_node_failure_and_recovery() -> fabric::Result<()> {
         .publish_node_config(&node_config.node_id, &node_config)
         .await?;
 
-    let failing_node_data = NodeData {
-        node_id: "failing_node".to_string(),
-        status: "offline".to_string(),
-        node_type: "generic".to_string(),
-        timestamp: 1234567890,
-        metadata: None,
-    };
-
-    // Simulate node failure
-    session
-        .put(
-            "node/failing_node/status",
-            serde_json::to_vec(&failing_node_data).unwrap(),
-        )
-        .res()
-        .await?;
+    // Stop node
+    node_cancel.cancel();
 
     // Wait for the orchestrator to detect the failure
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_millis(10050)).await;
 
     // Check if the orchestrator detected the failure
     {
@@ -253,25 +244,15 @@ async fn test_node_failure_and_recovery() -> fabric::Result<()> {
         assert_eq!(node_state.last_value.status, "offline");
     }
 
-    // Simulate node recovery
-    let node_recovery_data = NodeData {
-        node_id: "failing_node".to_string(),
-        status: "online".to_string(),
-        node_type: "generic".to_string(),
-        timestamp: 1234567890,
-        metadata: None,
-    };
-
-    session
-        .put(
-            "node/failing_node/status",
-            serde_json::to_vec(&node_recovery_data).unwrap(),
-        )
-        .res()
-        .await?;
+    // Start node again
+    let node_clone = node.clone();
+    let node_cancel_clone = node_cancel.clone();
+    let node_handle = tokio::spawn(async move {
+        node_clone.run(node_cancel_clone).await.unwrap();
+    });
 
     // Wait for the orchestrator to detect the recovery
-    sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_millis(100)).await;
 
     // Check if the orchestrator detected the recovery
     {
@@ -280,8 +261,9 @@ async fn test_node_failure_and_recovery() -> fabric::Result<()> {
         assert_eq!(node_state.last_value.status, "online");
     }
 
-    // Cancel all tasks
-    cancel.cancel();
+    // Cancel orchestrator and node
+    orchestrator_cancel.cancel();
+    node_cancel.cancel();
 
     // Wait for tasks to complete with a timeout
     let _ = tokio::time::timeout(Duration::from_secs(5), orchestrator_handle).await;
@@ -327,6 +309,143 @@ async fn test_orchestrator_callback_functionality() -> Result<(), FabricError> {
 
     assert_eq!(received_data.node_id, node_data.node_id);
     assert_eq!(received_data.status, node_data.status);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_multi_node_config_application() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
+
+    let session = create_zenoh_session().await;
+    let orchestrator = Arc::new(
+        Orchestrator::new("test_multi_node_orchestrator".to_string(), session.clone()).await?,
+    );
+
+    // Create 4 nodes with initial configurations
+    let node_configs = vec![
+        ("complex_node1", 5, 50.0, 100),
+        ("complex_node2", 10, 75.0, 200),
+        ("complex_node3", 15, 100.0, 300),
+        ("complex_node4", 20, 125.0, 400),
+    ];
+
+    let mut nodes = Vec::new();
+    for (id, sampling_rate, threshold, param1) in node_configs {
+        let config = NodeConfig {
+            node_id: id.to_string(),
+            config: serde_json::json!({
+                "sampling_rate": sampling_rate,
+                "threshold": threshold,
+                "mock_config": {"param1": param1}
+            }),
+        };
+
+        let node = Arc::new(
+            Node::new(
+                config.node_id.clone(),
+                "generic".to_string(),
+                config.clone(),
+                session.clone(),
+                None,
+            )
+            .await?,
+        );
+
+        nodes.push((node, config));
+    }
+
+    // Start the orchestrator
+    let orchestrator_cancel = CancellationToken::new();
+    let orchestrator_cancel_clone = orchestrator_cancel.clone();
+    let orchestrator_clone = orchestrator.clone();
+    let orchestrator_handle = tokio::spawn(async move {
+        orchestrator_clone
+            .run(orchestrator_cancel_clone)
+            .await
+            .unwrap();
+    });
+
+    // Start all nodes
+    let node_cancel = CancellationToken::new();
+    let node_handles: Vec<_> = nodes
+        .iter()
+        .map(|(node, _)| {
+            let node_clone = node.clone();
+            let cancel_clone = node_cancel.clone();
+            tokio::spawn(async move {
+                node_clone.run(cancel_clone).await.unwrap();
+            })
+        })
+        .collect();
+
+    // Wait for initialization
+    wait_for_node_initialization().await;
+
+    // Publish initial configurations
+    for (_, config) in &nodes {
+        orchestrator
+            .publish_node_config(&config.node_id, config)
+            .await?;
+    }
+
+    // Wait for config application
+    wait_for_node_initialization().await;
+
+    // Verify initial configurations
+    for (node, config) in &nodes {
+        let node_config = node.get_config().await;
+        assert_eq!(node_config.node_id, config.node_id);
+        assert_eq!(node_config.config, config.config);
+    }
+
+    // Update configurations
+    for (node, config) in &mut nodes {
+        let mut new_config = config.clone();
+        let mut json_config: serde_json::Value =
+            serde_json::from_value(config.config.clone()).unwrap();
+        json_config["sampling_rate"] =
+            serde_json::json!(json_config["sampling_rate"].as_i64().unwrap() * 2);
+        json_config["threshold"] =
+            serde_json::json!(json_config["threshold"].as_f64().unwrap() * 1.5);
+        json_config["mock_config"]["param1"] =
+            serde_json::json!(json_config["mock_config"]["param1"].as_i64().unwrap() + 50);
+        new_config.config = json_config;
+
+        orchestrator
+            .publish_node_config(&new_config.node_id, &new_config)
+            .await?;
+
+        *config = new_config;
+    }
+
+    // Wait for config application
+    wait_for_node_initialization().await;
+
+    // Verify updated configurations
+    for (node, config) in &nodes {
+        let node_config = node.get_config().await;
+        println!("Node config: {:?}", node_config);
+        println!("Config: {:?}", config);
+        assert_eq!(node_config.node_id, config.node_id);
+        assert_eq!(node_config.config, config.config);
+
+        // Additional assertions for specific config values
+        let json_config: serde_json::Value = serde_json::from_value(config.config.clone()).unwrap();
+        assert!(json_config["sampling_rate"].as_i64().unwrap() > 5);
+        assert!(json_config["threshold"].as_f64().unwrap() > 50.0);
+        assert!(json_config["mock_config"]["param1"].as_i64().unwrap() > 100);
+    }
+
+    // Cleanup
+    orchestrator_cancel.cancel();
+    node_cancel.cancel();
+
+    // Wait for tasks to complete with a timeout
+    let _ = tokio::time::timeout(Duration::from_secs(5), orchestrator_handle).await;
+    for handle in node_handles {
+        let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
+    }
 
     Ok(())
 }

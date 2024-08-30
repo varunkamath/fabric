@@ -4,16 +4,17 @@ use crate::node::interface::NodeData;
 use crate::node::interface::{NodeConfig, NodeInterface};
 use log::{debug, info, warn};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::Mutex;
 use tokio::sync::Notify;
+use tokio::sync::{Mutex, RwLock};
+use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
+
 #[derive(Clone)]
 pub struct Node {
     id: String,
     node_type: String,
-    config: NodeConfig,
+    config: Arc<RwLock<NodeConfig>>,
     session: Arc<Session>,
     interface: Arc<Mutex<Box<dyn NodeInterface + Send + Sync>>>,
     data_notify: Arc<Notify>,
@@ -35,7 +36,7 @@ impl Node {
         let node = Node {
             id,
             node_type,
-            config,
+            config: Arc::new(RwLock::new(config)),
             session,
             interface: Arc::new(Mutex::new(interface)),
             data_notify: Arc::new(Notify::new()),
@@ -59,7 +60,29 @@ impl Node {
         let interface = self.interface.clone();
         let node_id = self.id.clone();
 
+        // Initial status update
         self.update_status("online".to_string()).await?;
+
+        // Spawn a task for periodic status updates
+        let status_update_task = {
+            let cancel_clone = cancel.clone();
+            let self_clone = self.clone();
+            tokio::spawn(async move {
+                let mut interval = interval(Duration::from_secs(1));
+                loop {
+                    tokio::select! {
+                        _ = cancel_clone.cancelled() => {
+                            break;
+                        }
+                        _ = interval.tick() => {
+                            if let Err(e) = self_clone.update_status("online".to_string()).await {
+                                warn!("Failed to update status for node {}: {:?}", self_clone.id, e);
+                            }
+                        }
+                    }
+                }
+            })
+        };
 
         tokio::spawn(async move {
             loop {
@@ -106,17 +129,28 @@ impl Node {
             }
         }
 
+        // Wait for the status update task to complete
+        status_update_task
+            .await
+            .map_err(|e| FabricError::Other(format!("Status update task error: {}", e)))?;
+
         info!("Node {} stopped", self.id);
         Ok(())
     }
 
     pub async fn update_config(&self, new_config: NodeConfig) -> Result<()> {
-        self.interface.lock().await.update_config(new_config);
+        self.interface
+            .lock()
+            .await
+            .update_config(new_config.clone());
+        // Update the Node's config field
+        let mut config = self.config.write().await;
+        *config = new_config;
         Ok(())
     }
 
     pub async fn get_config(&self) -> NodeConfig {
-        self.config.clone()
+        self.config.read().await.clone()
     }
 
     pub async fn read(&self) -> Result<f64> {
