@@ -7,7 +7,17 @@
 
 #### Framework Agnostically Bridging Resilient Interconnected Components
 
-`fabric` is a distributed sensor network system that demonstrates the integration of multiple sensor nodes with a central control node using the Zenoh communication framework. This project showcases the interoperability between Rust and Python implementations, with a focus on flexibility and extensibility.
+`fabric` is a robust framework for building networks of autonomous agents, providing a flexible and scalable solution for creating, managing, and orchestrating distributed systems.
+
+## Features
+
+- **Node Management**: Create and manage individual nodes with customizable configurations.
+- **Orchestration**: Centralized control and monitoring of multiple nodes.
+- **Real-time Communication**: Utilizes Zenoh for efficient, real-time data exchange between nodes and the orchestrator.
+- **Dynamic Configuration**: Nodes can receive and apply configuration updates at runtime.
+- **Health Monitoring**: Automatic health checks and status updates for all nodes.
+- **Fault Tolerance**: Detects and handles node failures, with automatic offline status updates after 10 seconds of inactivity.
+- **Extensible**: Easily create custom node types by implementing the `NodeInterface` trait.
 
 ## Project Structure
 
@@ -26,17 +36,6 @@
     - `example_node/`: Example of a Python node implementation
     - `example_orchestrator/`: Example of a Python orchestrator implementation
 - `.github/workflows/`: CI/CD configuration
-
-## Features
-
-- Flexible node system with support for different custom node types (e.g., generic, radio)
-- (Optional) Central orchestrator for managing and configuring nodes
-- Real-time data pub/sub using [Zenoh](https://zenoh.io/)
-- Dynamic configuration updates
-- Plugin system for extending node functionality
-- Comprehensive error handling
-- Asynchronous operations (in Rust using [Tokio](https://tokio.rs/))
-- Integration with the [Zenoh](https://zenoh.io/) communication framework
 
 ## Prerequisites
 
