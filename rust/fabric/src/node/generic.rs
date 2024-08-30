@@ -28,7 +28,7 @@ impl NodeInterface for GenericNode {
         Ok(NodeData {
             node_id: self.config.node_id.clone(),
             node_type: "generic".to_string(),
-            value: 0.0,
+            status: "online".to_string(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()

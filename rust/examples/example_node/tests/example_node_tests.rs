@@ -1,11 +1,10 @@
+use crate::example_node::ExampleNode;
 use fabric::error::Result;
 use fabric::node::interface::{NodeConfig, NodeInterface};
 use fabric::node::Node;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
-
-use example_node::ExampleNode;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn test_example_node_creation() -> Result<()> {

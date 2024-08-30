@@ -1,28 +1,22 @@
 use crate::error::{FabricError, Result};
 use crate::node::generic::GenericNode;
-use crate::node::interface::{NodeConfig, NodeData, NodeInterface}; // Add NodeData here
+use crate::node::interface::NodeData;
+use crate::node::interface::{NodeConfig, NodeInterface};
 use log::{debug, info, warn};
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
-use zenoh::prelude::Sample;
-use zenoh::publication::Publisher;
-use zenoh::subscriber::Subscriber;
-
+#[derive(Clone)]
 pub struct Node {
     id: String,
     node_type: String,
-    session: Arc<zenoh::Session>,
-    interface: Arc<Mutex<Box<dyn NodeInterface>>>,
-    publishers: Arc<Mutex<HashMap<String, Publisher<'static>>>>,
-    subscribers: Arc<Mutex<HashMap<String, Subscriber<'static, flume::Receiver<Sample>>>>>,
-    callbacks: Arc<Mutex<HashMap<String, Arc<dyn Fn(Sample) + Send + Sync>>>>,
-    config_updated: Arc<Notify>,
-    config_updated_callback: Arc<Mutex<Option<Box<dyn Fn() + Send + Sync>>>>, // Wrapped in Arc<Mutex<>>
+    config: NodeConfig,
+    session: Arc<Session>,
+    interface: Arc<Mutex<Box<dyn NodeInterface + Send + Sync>>>,
+    data_notify: Arc<Notify>,
 }
 
 impl Node {
@@ -30,233 +24,121 @@ impl Node {
         id: String,
         node_type: String,
         config: NodeConfig,
-        session: Arc<zenoh::Session>,
-        config_updated_callback: Option<Box<dyn Fn() + Send + Sync>>,
+        session: Arc<Session>,
+        interface: Option<Box<dyn NodeInterface + Send + Sync>>,
     ) -> Result<Self> {
-        let config_updated = Arc::new(Notify::new());
-
-        let node = Self {
-            id: id.clone(),
-            node_type: node_type.clone(),
-            session: session.clone(),
-            interface: Arc::new(Mutex::new(Box::new(GenericNode::new(config.clone())))),
-            publishers: Arc::new(Mutex::new(HashMap::new())),
-            subscribers: Arc::new(Mutex::new(HashMap::new())),
-            callbacks: Arc::new(Mutex::new(HashMap::new())),
-            config_updated,
-            config_updated_callback: Arc::new(Mutex::new(config_updated_callback)), // Wrap in Arc<Mutex<>>
+        let interface = match interface {
+            Some(interface) => interface,
+            None => Box::new(GenericNode::new(config.clone())),
         };
 
-        // Create the publisher during initialization
-        node.declare_node_data_publisher().await?;
+        let node = Node {
+            id,
+            node_type,
+            config,
+            session,
+            interface: Arc::new(Mutex::new(interface)),
+            data_notify: Arc::new(Notify::new()),
+        };
 
         Ok(node)
     }
 
-    pub async fn declare_node_data_publisher(&self) -> Result<()> {
-        let topic = format!("node/{}/data", self.id);
-        let mut publishers = self.publishers.lock().await;
-        if !publishers.contains_key("data") {
-            let publisher = self.session.declare_publisher(topic.clone()).res().await?;
-            publishers.insert("data".to_string(), publisher);
-            info!("Node {} declared publisher for topic: {}", self.id, topic);
-        }
-        Ok(())
-    }
-
     pub async fn run(&self, cancel: CancellationToken) -> Result<()> {
-        info!("Node {} starting", self.id);
+        info!("Starting node {}", self.id);
 
-        info!("Node {} about to subscribe to config updates", self.id);
-        self.subscribe_to_config_updates().await?;
-        info!("Node {} subscribed to config updates", self.id);
+        let key_expr = format!("node/{}/config", self.id);
+        let subscriber = self
+            .session
+            .declare_subscriber(&key_expr)
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
 
-        // Ensure the publisher exists before entering the loop
-        let topic = format!("node/{}/data", self.id);
-        if !self.publishers.lock().await.contains_key("data") {
-            self.declare_node_data_publisher().await?;
-        }
+        let data_notify = self.data_notify.clone();
+        let interface = self.interface.clone();
+        let node_id = self.id.clone();
+
+        self.update_status("online".to_string()).await?;
+
+        tokio::spawn(async move {
+            loop {
+                let data = interface.lock().await.read_data().await;
+                match data {
+                    Ok(data) => {
+                        debug!("Node {} read data: {:?}", node_id, data);
+                        data_notify.notify_one();
+                    }
+                    Err(e) => {
+                        warn!("Error reading data for node {}: {:?}", node_id, e);
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
+        });
 
         loop {
             tokio::select! {
-                _ = tokio::time::sleep(Duration::from_secs(1)) => {
-                    let data = self.interface.lock().await.read_data().await?;
-                    debug!("Node {} publishing data: {:?}", self.id, data);
-                    let payload = serde_json::to_string(&data)?;
-                    self.publish(&topic, payload).await?;
-                }
                 _ = cancel.cancelled() => {
-                    info!("Node {} shutting down", self.id);
+                    info!("Node {} received cancellation signal", self.id);
                     break;
                 }
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn declare_publisher(&self, topic: String) -> Result<()> {
-        let publisher = self.session.declare_publisher(topic.clone()).res().await?;
-        self.publishers.lock().await.insert(topic, publisher);
-        Ok(())
-    }
-
-    pub async fn publish(&self, topic: &str, payload: String) -> Result<()> {
-        let publishers = self.publishers.lock().await;
-        if let Some(publisher) = publishers.get("data") {
-            publisher.put(payload).res().await?;
-            Ok(())
-        } else {
-            Err(FabricError::PublisherNotFound(topic.to_string()))
-        }
-    }
-
-    pub async fn subscribe(
-        &self,
-        topic: &str,
-        callback: impl Fn(Sample) + Send + Sync + 'static,
-    ) -> Result<()> {
-        info!("Node {} subscribing to topic: {}", self.id, topic);
-        let subscriber = self.session.declare_subscriber(topic).res().await?;
-        let receiver = subscriber.receiver.clone();
-
-        self.subscribers
-            .lock()
-            .await
-            .insert(topic.to_string(), subscriber);
-        self.callbacks
-            .lock()
-            .await
-            .insert(topic.to_string(), Arc::new(callback));
-
-        let node_id = self.id.clone();
-        let topic_string = topic.to_string();
-        let callbacks = self.callbacks.clone();
-
-        tokio::spawn(async move {
-            info!(
-                "Node {} starting subscription loop for topic: {}",
-                node_id, topic_string
-            );
-            while let Ok(sample) = receiver.recv_async().await {
-                info!(
-                    "Node {} received sample on topic {}: {:?}",
-                    node_id, topic_string, sample
-                );
-                if let Some(callback) = callbacks.lock().await.get(&topic_string) {
-                    callback(sample);
+                sample = subscriber.recv_async() => {
+                    match sample {
+                        Ok(sample) => {
+                            let new_config: NodeConfig = serde_json::from_slice(sample.value.payload.contiguous().as_ref())
+                                .map_err(|e| FabricError::SerdeJsonError(e))?;
+                            info!("Node {} received new configuration: {:?}", self.id, new_config);
+                            self.update_config(new_config).await?;
+                        }
+                        Err(e) => {
+                            warn!("Error receiving configuration for node {}: {:?}", self.id, e);
+                        }
+                    }
+                }
+                _ = self.data_notify.notified() => {
+                    let data = self.interface.lock().await.read_data().await?;
+                    let key_expr = format!("node/{}/data", self.id);
+                    let payload = serde_json::to_vec(&data).map_err(|e| FabricError::SerdeJsonError(e))?;
+                    self.session.put(&key_expr, payload).res().await.map_err(|e| FabricError::ZenohError(e))?;
+                    debug!("Published data for node {}: {:?}", self.id, data);
                 }
             }
-            info!(
-                "Node {} subscription loop ended for topic: {}",
-                node_id, topic_string
-            );
-        });
-
-        info!(
-            "Node {} successfully subscribed to topic: {}",
-            self.id, topic
-        );
-        Ok(())
-    }
-
-    pub async fn unsubscribe(&self, topic: &str) -> Result<()> {
-        if let Some(subscriber) = self.subscribers.lock().await.remove(topic) {
-            subscriber.undeclare().res().await?;
         }
-        self.callbacks.lock().await.remove(topic);
+
+        info!("Node {} stopped", self.id);
         Ok(())
     }
 
-    pub fn get_node_type(&self) -> &str {
-        &self.node_type
+    pub async fn update_config(&self, new_config: NodeConfig) -> Result<()> {
+        self.interface.lock().await.update_config(new_config);
+        Ok(())
     }
 
     pub async fn get_config(&self) -> NodeConfig {
-        self.interface.lock().await.get_config()
+        self.config.clone()
     }
 
-    pub async fn publish_node_data(
-        &self,
-        value: f64,
-        metadata: Option<serde_json::Value>,
-    ) -> Result<()> {
-        let node_data = NodeData {
-            node_id: self.id.clone(),
-            node_type: self.node_type.clone(),
-            value,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata,
-        };
-
-        let topic = format!("node/{}/data", self.id);
-        let payload = serde_json::to_string(&node_data)?;
-
-        info!("Publishing node data: {:?} to topic: {}", node_data, topic);
-
-        self.session
-            .put(&topic, payload)
-            .res()
-            .await
-            .map_err(FabricError::ZenohError)?;
-
-        Ok(())
+    pub async fn read(&self) -> Result<f64> {
+        self.interface.lock().await.read().await
     }
 
     pub fn get_id(&self) -> &str {
         &self.id
     }
 
-    pub async fn subscribe_to_config_updates(&self) -> Result<()> {
-        let config_topic = format!("node/{}/config", self.id);
-        info!(
-            "Node {} subscribing to config updates on topic: {}",
-            self.id, config_topic
-        );
-        let interface = self.interface.clone();
-        let node_id = self.id.clone();
-        let config_updated = self.config_updated.clone();
-        let config_updated_callback = self.config_updated_callback.clone(); // Clone the Arc, not the inner value
-        self.subscribe(&config_topic, move |sample| {
-            let interface = interface.clone();
-            let node_id = node_id.clone();
-            let config_updated = config_updated.clone();
-            let config_updated_callback = config_updated_callback.clone(); // Clone the Arc again
-            tokio::spawn(async move {
-                info!("Node {} received raw config update: {:?}", node_id, sample);
-                match serde_json::from_slice::<NodeConfig>(&sample.value.payload.contiguous()) {
-                    Ok(config) => {
-                        info!(
-                            "Node {} received valid config update: {:?}",
-                            node_id, config
-                        );
-                        let mut interface = interface.lock().await;
-                        interface.update_config(config.clone());
-                        info!("Node {} updated config successfully", node_id);
-                        info!("Node {} notifying config update", node_id);
-                        if let Some(callback) = config_updated_callback.lock().await.as_ref() {
-                            callback();
-                        }
-                        config_updated.notify_one();
-                    }
-                    Err(e) => {
-                        warn!("Node {} received invalid config update: {}", node_id, e);
-                        warn!("Raw payload: {:?}", sample.value.payload);
-                    }
-                }
-            });
-        })
-        .await?;
-        info!("Node {} successfully subscribed to config updates", self.id);
-        Ok(())
+    pub fn get_type(&self) -> &str {
+        &self.node_type
     }
 
-    pub async fn update_config(&self, config: NodeConfig) {
-        let mut interface = self.interface.lock().await;
-        interface.update_config(config);
+    pub async fn declare_node_data_publisher(&self) -> Result<()> {
+        let key_expr = format!("node/{}/data", self.id);
+        self.session
+            .declare_publisher(key_expr)
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+        Ok(())
     }
 
     pub async fn set_interface(
@@ -264,6 +146,44 @@ impl Node {
         interface: Box<dyn NodeInterface + Send + Sync>,
     ) -> Result<()> {
         *self.interface.lock().await = interface;
+        Ok(())
+    }
+
+    pub async fn update_status(&self, status: String) -> Result<()> {
+        let node_data = NodeData {
+            node_id: self.id.clone(),
+            node_type: self.node_type.clone(),
+            status,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| FabricError::Other(e.to_string()))?
+                .as_secs(),
+            metadata: None,
+        };
+        self.publish_node_status(&node_data).await
+    }
+
+    async fn publish_node_data(&self, node_data: &NodeData) -> Result<()> {
+        let key_expr = format!("node/{}/data", self.id);
+        let payload = serde_json::to_vec(node_data).map_err(|e| FabricError::SerdeJsonError(e))?;
+        self.session
+            .put(&key_expr, payload)
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+        debug!("Published data for node {}: {:?}", self.id, node_data);
+        Ok(())
+    }
+
+    async fn publish_node_status(&self, node_data: &NodeData) -> Result<()> {
+        let key_expr = format!("fabric/{}/status", self.id);
+        let payload = serde_json::to_vec(node_data).map_err(|e| FabricError::SerdeJsonError(e))?;
+        self.session
+            .put(&key_expr, payload)
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+        debug!("Published status for node {}: {:?}", self.id, node_data);
         Ok(())
     }
 }

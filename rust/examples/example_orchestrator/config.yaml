@@ -1,24 +1,49 @@
 sensors:
   - id: temp_sensor_1
     type: temperature
-    sampling_rate: 5
-    threshold: 50.0
+    config:
+      sampling_rate: 5
+      threshold: 30.0
+      calibration_data:
+        - 0.9876543210987654
+        - 1.0123456789012345
   - id: temp_sensor_2
     type: temperature
-    sampling_rate: 10
-    threshold: 75.0
+    config:
+      sampling_rate: 10
+      threshold: 35.0
+      calibration_data:
+        - 0.9999999999999999
+        - 1.0000000000000001
   - id: humidity_sensor_1
     type: humidity
-    sampling_rate: 15
-    threshold: 25.0
+    config:
+      sampling_rate: 15
+      threshold: 60.0
+      correction_factors:
+        - temperature: 25.0
+          factor: 1.05
+        - temperature: 30.0
+          factor: 1.1
+  - id: humidity_sensor_2
+    type: humidity
+    config:
+      sampling_rate: 20
+      threshold: 65.0
+      correction_factors:
+        - temperature: 20.0
+          factor: 0.95
+        - temperature: 35.0
+          factor: 1.15
   - id: radio_sensor_1
     type: radio
-    sampling_rate: 1
-    threshold: -80.0
-    custom_config:
+    config:
+      sampling_rate: 1
+      threshold: -80.0
       radio_config:
         frequency: 433.0
         modulation: "FSK"
         bandwidth: 125.0
-        tx_power: 14.0
+        tx_power: 14
       mode: "receive"
+      antenna_gain: 2.1234567890123456

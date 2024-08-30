@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeState {
-    pub last_value: f64,
+    pub last_value: NodeData,
     pub last_update: std::time::SystemTime,
 }
 
@@ -49,7 +49,7 @@ mod tests {
         let node_data = NodeData {
             node_id: "test_node".to_string(),
             node_type: "radio".to_string(),
-            value: 42.0,
+            status: "online".to_string(),
             timestamp: 1234567890,
             metadata: None,
         };
@@ -59,6 +59,12 @@ mod tests {
         let nodes = orchestrator.nodes.lock().await;
         assert!(nodes.contains_key(&node_data.node_id));
         let state = nodes.get(&node_data.node_id).unwrap();
-        assert_eq!(state.last_value, node_data.value);
+        let status = state.last_value.status.clone();
+        assert_eq!(status, node_data.status.as_str());
     }
+}
+
+impl Orchestrator {
+    // Remove the duplicate publish_node_config method from here
+    // Other methods can stay as they are
 }

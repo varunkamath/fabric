@@ -1,60 +1,61 @@
-use async_trait::async_trait;
-use fabric::error::Result;
-use fabric::node::interface::{NodeConfig, NodeData, NodeInterface};
-use std::time::{SystemTime, UNIX_EPOCH};
+use fabric::error::{FabricError, Result};
+use fabric::node::interface::NodeConfig;
+use fabric::node::Node;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio_util::sync::CancellationToken;
+use zenoh::prelude::r#async::*;
 
-pub struct ExampleNode {
-    pub config: NodeConfig,
+// Import the create_sensor_interface function
+use crate::sensors::create_sensor_interface;
+
+const CONFIG_TOPIC: &str = "fabric/config";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SensorConfig {
+    id: String,
+    #[serde(rename = "type")]
+    sensor_type: String,
+    config: serde_json::Value,
 }
 
-#[async_trait]
-impl NodeInterface for ExampleNode {
-    async fn read_data(&self) -> Result<NodeData> {
-        Ok(NodeData {
-            node_id: self.config.node_id.clone(),
-            node_type: "example".to_string(),
-            value: rand::random::<f64>(),
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata: Some(serde_json::json!({
-                "example_data": "Some value",
-                "timestamp": chrono::Utc::now().timestamp(),
-            })),
-        })
-    }
+#[tokio::main]
+async fn main() -> Result<()> {
+    // Initialize Zenoh session
+    let session = Arc::new(zenoh::open(zenoh::config::Config::default()).res().await?);
 
-    fn get_config(&self) -> NodeConfig {
-        self.config.clone()
-    }
+    // Request configuration
+    let node_id = "example_node".to_string(); // Replace with actual node ID
+    session.put(CONFIG_TOPIC, node_id.clone()).res().await?;
 
-    fn update_config(&mut self, new_config: NodeConfig) {
-        self.config = new_config;
-    }
+    // Wait for configuration
+    let subscriber = session.declare_subscriber(CONFIG_TOPIC).res().await?;
+    let sample = subscriber.recv_async().await?;
+    let sensor_config: SensorConfig = serde_json::from_slice(&sample.value.payload.contiguous())?;
 
-    async fn read(&self) -> Result<f64> {
-        Ok(rand::random::<f64>())
-    }
+    // Create node configuration
+    let node_config = NodeConfig {
+        node_id: sensor_config.id,
+        config: sensor_config.config,
+    };
 
-    fn set_config(&mut self, config: NodeConfig) {
-        self.config = config;
-    }
+    // Create the node
+    let mut node = Node::new(
+        node_config.node_id.clone(),
+        sensor_config.sensor_type.clone(),
+        node_config.clone(),
+        session.clone(),
+        None,
+    )
+    .await?;
 
-    fn get_type(&self) -> String {
-        "example".to_string()
-    }
+    // Set the node interface using the create_sensor_interface function
+    let sensor_interface = create_sensor_interface(&sensor_config.sensor_type, node_config);
+    node.set_interface(sensor_interface).await?;
 
-    async fn handle_event(&mut self, topic: &str, payload: &str) -> Result<()> {
-        println!(
-            "Received event on topic '{}' with payload: {}",
-            topic, payload
-        );
-        Ok(())
-    }
-}
+    // Run the node
+    let cancel_token = CancellationToken::new();
+    node.run(cancel_token).await?;
 
-#[allow(dead_code)]
-fn main() {
-    println!("Example Node");
+    Ok(())
 }

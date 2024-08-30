@@ -1,4 +1,4 @@
-pub use crate::main::ExampleNode;
+mod sensors;
+pub use sensors::*;
 
-#[allow(special_module_name)]
-mod main;
+pub mod example_node;

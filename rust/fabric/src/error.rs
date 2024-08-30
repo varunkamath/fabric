@@ -10,6 +10,9 @@ pub enum FabricError {
     #[error("Serde JSON error: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
 
+    #[error("Serde YAML error: {0}")]
+    SerdeYamlError(#[from] serde_yaml::Error),
+
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 
@@ -21,6 +24,12 @@ pub enum FabricError {
 
     #[error("Zenoh API error: {0}")]
     ZenohApiError(Box<dyn StdError + Send + Sync>),
+
+    #[error("Failed to publish data: {0}")]
+    PublishError(String),
+
+    #[error("Invalid configuration: {0}")]
+    InvalidConfig(String),
 }
 
 impl From<JoinError> for FabricError {

@@ -1,94 +1,108 @@
-use fabric::error::Result;
-use fabric::init_logger;
-use fabric::node::interface::NodeConfig;
+use fabric::error::{FabricError, Result};
 use fabric::orchestrator::Orchestrator;
-use log::{info, warn};
-use std::env;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
 
+const CONFIG_TOPIC: &str = "fabric/config";
+
+#[derive(Debug, Deserialize)]
+struct CorrectionFactor {
+    temperature: f64,
+    factor: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct RadioConfig {
+    frequency: f64,
+    modulation: String,
+    bandwidth: f64,
+    tx_power: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct SensorConfig {
+    id: String,
+    #[serde(rename = "type")]
+    sensor_type: String,
+    config: SensorConfigData,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum SensorConfigData {
+    Temperature {
+        sampling_rate: i64,
+        threshold: f64,
+        calibration_data: Vec<f64>,
+    },
+    Humidity {
+        sampling_rate: i64,
+        threshold: f64,
+        correction_factors: Vec<CorrectionFactor>,
+    },
+    Radio {
+        sampling_rate: i64,
+        threshold: f64,
+        radio_config: RadioConfig,
+        mode: String,
+        antenna_gain: f64,
+    },
+}
+
+#[derive(Debug, Deserialize)]
+struct OrchestratorConfig {
+    sensors: Vec<SensorConfig>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logger(log::LevelFilter::Info);
+    // Load configuration
+    let config_str = std::fs::read_to_string("config.yaml").map_err(FabricError::from)?;
+    let config: OrchestratorConfig =
+        serde_yaml::from_str(&config_str).map_err(FabricError::from)?;
 
-    let orchestrator_id =
-        env::var("ORCHESTRATOR_ID").unwrap_or_else(|_| "example_orchestrator".to_string());
+    // Create a HashMap for quick config lookup
+    let config_map: HashMap<String, SensorConfig> = config
+        .sensors
+        .into_iter()
+        .map(|sensor| (sensor.id.clone(), sensor))
+        .collect();
 
-    info!("Starting example orchestrator: {}", orchestrator_id);
+    // Initialize Zenoh session
+    let session = Arc::new(zenoh::open(zenoh::config::Config::default()).res().await?);
 
-    let config = Config::default();
-    let session = Arc::new(zenoh::open(config).res().await?);
+    // Create Orchestrator
+    let orchestrator = Orchestrator::new("main_orchestrator".to_string(), session.clone()).await?;
 
-    let orchestrator = Arc::new(Orchestrator::new(orchestrator_id.clone(), session.clone()).await?);
+    // Subscribe to config requests
+    let subscriber = session.declare_subscriber(CONFIG_TOPIC).res().await?;
 
-    let cancel = CancellationToken::new();
-    let orchestrator_clone = orchestrator.clone();
+    // Handle config requests
     tokio::spawn(async move {
-        orchestrator_clone.run(cancel).await.unwrap();
+        while let Ok(sample) = subscriber.recv_async().await {
+            if let Ok(node_id) = String::from_utf8(sample.value.payload.contiguous().to_vec()) {
+                let config = config_map
+                    .get(&node_id)
+                    .cloned()
+                    .unwrap_or_else(|| SensorConfig {
+                        id: node_id.clone(),
+                        sensor_type: "default".to_string(),
+                        config: serde_json::json!({}),
+                    });
+
+                let config_json = serde_json::to_string(&config).unwrap();
+                let _ = session.put(CONFIG_TOPIC, config_json).res().await;
+                println!("Sent config for node: {}", node_id);
+            }
+        }
     });
 
-    println!("Orchestrator {} is running...", orchestrator_id);
+    // Run the orchestrator
+    let cancel_token = CancellationToken::new();
+    orchestrator.run(cancel_token.clone()).await?;
 
-    // Example: Subscribe to all node data
-    orchestrator
-        .subscribe_to_node("*", |data| {
-            println!("Received data from node {}: {:?}", data.node_id, data);
-        })
-        .await?;
-
-    // Example: Publish initial node configurations
-    let initial_configs = OrchestratorConfig {
-        nodes: vec![
-            NodeConfig {
-                node_id: "node1".to_string(),
-                config: serde_json::json!({
-                    "sampling_rate": 5,
-                    "threshold": 50.0,
-                    "radio_config": {"frequency": 915.0}
-                }),
-            },
-            NodeConfig {
-                node_id: "node2".to_string(),
-                config: serde_json::json!({
-                    "sampling_rate": 10,
-                    "threshold": 75.0,
-                    "radio_config": {"frequency": 2400.0}
-                }),
-            },
-        ],
-    };
-
-    orchestrator.publish_node_configs(&initial_configs).await?;
-
-    // Example: Periodically update node configurations
-    loop {
-        tokio::time::sleep(Duration::from_secs(30)).await;
-
-        let new_configs = vec![
-            NodeConfig {
-                node_id: "node1".to_string(),
-                config: serde_json::json!({
-                    "sampling_rate": 7,
-                    "threshold": 60.0,
-                    "radio_config": {"frequency": 915.0}
-                }),
-            },
-            NodeConfig {
-                node_id: "node2".to_string(),
-                config: serde_json::json!({
-                    "sampling_rate": 12,
-                    "threshold": 80.0,
-                    "radio_config": {"frequency": 2400.0}
-                }),
-            },
-        ];
-
-        for new_config in &new_configs {
-            orchestrator
-                .publish_node_config(&new_config.node_id, new_config)
-                .await?;
-        }
-    }
+    Ok(())
 }

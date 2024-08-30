@@ -1,22 +1,25 @@
-use super::{CallbackFunction, NodeState};
+use super::NodeState;
+use crate::error::{FabricError, Result};
 use crate::node::interface::{NodeConfig, NodeData};
+use backoff::{backoff::Backoff, ExponentialBackoff}; // Add this line
 use log::{debug, info, warn};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
 use zenoh::subscriber::Subscriber;
 
-use crate::error::Result;
-
 #[derive(Clone)]
 pub struct Orchestrator {
     id: String,
-    session: Arc<Session>,
+    pub session: Arc<Session>,
     pub nodes: Arc<Mutex<HashMap<String, NodeState>>>,
-    callbacks: Arc<Mutex<HashMap<String, CallbackFunction>>>,
-    subscribers: Arc<Mutex<HashMap<String, Subscriber<'static, ()>>>>,
+    callbacks: Arc<Mutex<HashMap<String, Arc<Mutex<dyn Fn(NodeData) + Send + Sync>>>>>,
+    pub subscribers: Arc<Mutex<HashMap<String, Subscriber<'static, ()>>>>,
+    status_subscriber: Arc<Mutex<Option<Subscriber<'static, ()>>>>,
 }
 
 impl Orchestrator {
@@ -28,24 +31,18 @@ impl Orchestrator {
             nodes: Arc::new(Mutex::new(HashMap::new())),
             callbacks: Arc::new(Mutex::new(HashMap::new())),
             subscribers: Arc::new(Mutex::new(HashMap::new())),
+            status_subscriber: Arc::new(Mutex::new(None)),
         })
     }
 
     pub async fn run(&self, cancel: CancellationToken) -> Result<()> {
-        info!("Orchestrator {} starting", self.id);
-        let subscriber = self.session.declare_subscriber("node/*/data").res().await?;
+        info!("Starting orchestrator: {}", self.id);
+
+        // Subscribe to all node status topics
+        self.subscribe_to_node_statuses().await?;
 
         loop {
             tokio::select! {
-                Ok(sample) = subscriber.recv_async() => {
-                    debug!("Orchestrator {} received raw data: {:?}", self.id, sample);
-                    if let Ok(node_data) = serde_json::from_slice::<NodeData>(&sample.value.payload.contiguous()) {
-                        info!("Orchestrator {} parsed node data: {:?}", self.id, node_data);
-                        self.update_node_state(node_data).await;
-                    } else {
-                        warn!("Failed to parse node data");
-                    }
-                }
                 _ = cancel.cancelled() => {
                     info!("Orchestrator {} shutting down", self.id);
                     break;
@@ -53,55 +50,120 @@ impl Orchestrator {
             }
         }
 
+        // Unsubscribe from node status topics
+        self.unsubscribe_from_node_statuses().await?;
+
+        info!("Orchestrator {} shutdown complete", self.id);
+
         Ok(())
     }
 
-    pub async fn subscribe_to_node(&self, node_id: &str, callback: CallbackFunction) -> Result<()> {
-        let topic = format!("node/{}/data", node_id);
-        info!("Orchestrator subscribing to topic: {}", topic);
-        let topic_clone = topic.clone(); // Clone the topic here
+    pub async fn subscribe_to_node_statuses(&self) -> Result<()> {
+        let orchestrator = self.clone();
         let subscriber = self
             .session
-            .declare_subscriber(&topic)
+            .declare_subscriber("fabric/*/status")
             .callback(move |sample| {
-                if let Ok(node_data) =
-                    serde_json::from_slice::<NodeData>(&sample.value.payload.contiguous())
-                {
-                    info!(
-                        "Orchestrator received data on topic {}: {:?}",
-                        topic_clone, node_data
-                    );
-                    callback(node_data);
-                } else {
-                    warn!("Failed to parse node data from topic: {}", topic_clone);
-                }
+                let orchestrator_clone = orchestrator.clone();
+                tokio::spawn(async move {
+                    orchestrator_clone.update_node_health(sample).await;
+                });
             })
             .res()
-            .await?;
-
-        self.subscribers
-            .lock()
             .await
-            .insert(node_id.to_string(), subscriber);
+            .map_err(|e| FabricError::ZenohError(e))?;
+
+        let mut status_subscriber = self.status_subscriber.lock().await;
+        *status_subscriber = Some(subscriber);
 
         Ok(())
+    }
+
+    pub async fn unsubscribe_from_node_statuses(&self) -> Result<()> {
+        info!("Unsubscribing from node statuses");
+        let mut status_subscriber = self.status_subscriber.lock().await;
+        if let Some(subscriber) = status_subscriber.take() {
+            subscriber
+                .undeclare()
+                .res()
+                .await
+                .map_err(|e| FabricError::ZenohError(e))?;
+        }
+        Ok(())
+    }
+
+    async fn update_node_health(&self, sample: Sample) {
+        let key_expr = sample.key_expr.as_str();
+        let node_id = key_expr.split('/').nth(1).unwrap_or("unknown");
+        info!("Updating node health for node: {}", node_id);
+
+        // Convert ZBuf to a contiguous slice of bytes
+        let payload_bytes = sample.value.payload.contiguous();
+
+        // Deserialize the payload into a serde_json::Value
+        match serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
+            Ok(json_value) => {
+                debug!("Deserialized JSON: {:?}", json_value);
+
+                let mut nodes = self.nodes.lock().await;
+                let node_state = nodes
+                    .entry(node_id.to_string())
+                    .or_insert_with(|| NodeState {
+                        last_value: NodeData::from_json(&json_value.to_string()).unwrap(),
+                        last_update: std::time::SystemTime::now(),
+                    });
+
+                if let Ok(node_data) = NodeData::from_json(&json_value.to_string()) {
+                    node_state.last_value = node_data;
+                    node_state.last_update = std::time::SystemTime::now();
+
+                    if node_state.last_value.status != "online" {
+                        warn!("Node {} is {}", node_id, node_state.last_value.status);
+                    }
+
+                    // Trigger callbacks
+                    let callbacks = self.callbacks.lock().await;
+                    if let Some(callback) = callbacks.get(node_id) {
+                        let callback = callback.lock().await;
+                        callback(node_state.last_value.clone());
+                    }
+                } else {
+                    warn!("Failed to parse NodeData from JSON for node {}", node_id);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to parse JSON payload for node {}: {}", node_id, e);
+            }
+        }
     }
 
     pub async fn publish_node_config(&self, node_id: &str, config: &NodeConfig) -> Result<()> {
         let key = format!("node/{}/config", node_id);
         let config_json = serde_json::to_string(config)?;
-        info!("Orchestrator {} publishing config to key: {}", self.id, key);
-        info!("Config payload: {}", config_json);
-        self.session.put(&key, config_json).res().await?;
-        info!(
-            "Orchestrator {} successfully published config to node {}: {:?}",
-            self.id, node_id, config
-        );
-        Ok(())
-    }
+        let mut backoff = ExponentialBackoff::default();
 
-    pub fn get_id(&self) -> &str {
-        &self.id
+        loop {
+            match self.session.put(&key, config_json.clone()).res().await {
+                Ok(_) => {
+                    info!(
+                        "Orchestrator {} successfully published config to node {}: {:?}",
+                        self.id, node_id, config
+                    );
+                    return Ok(());
+                }
+                Err(err) => {
+                    if let Some(duration) = backoff.next_backoff() {
+                        warn!(
+                            "Failed to publish config, retrying in {:?}: {}",
+                            duration, err
+                        );
+                        sleep(duration).await;
+                    } else {
+                        return Err(FabricError::PublishError(err.to_string()));
+                    }
+                }
+            }
+        }
     }
 
     pub async fn update_node_state(&self, node_data: NodeData) {
@@ -109,14 +171,113 @@ impl Orchestrator {
         nodes.insert(
             node_data.node_id.clone(),
             NodeState {
-                last_value: node_data.value,
+                last_value: node_data.clone(),
                 last_update: std::time::SystemTime::now(),
             },
         );
 
         let callbacks = self.callbacks.lock().await;
         if let Some(callback) = callbacks.get(&node_data.node_id) {
+            let callback = callback.lock().await;
             callback(node_data);
         }
+    }
+
+    pub async fn check_node_health(&self) {
+        let mut nodes = self.nodes.lock().await;
+        for (node_id, node_state) in nodes.iter_mut() {
+            let key = format!("node/{}/status", node_id);
+            match self.session.get(&key).res().await {
+                Ok(receiver) => {
+                    match receiver.recv_async().await {
+                        Ok(reply) => {
+                            if let Ok(sample) = reply.sample {
+                                if let Ok(status) =
+                                    std::str::from_utf8(&sample.value.payload.contiguous())
+                                {
+                                    node_state.last_value = NodeData::from_json(status).unwrap();
+                                    if node_state.last_value.status != "online" {
+                                        warn!("Node {} is offline", node_id);
+                                        node_state.last_value.status = "offline".to_string();
+                                        // Handle node failure, e.g., update node status, notify subscribers, etc.
+                                    }
+                                } else {
+                                    warn!("Failed to parse status for node {}", node_id);
+                                    node_state
+                                        .last_value
+                                        .set_status("unknown".to_owned())
+                                        .map_err(|e| warn!("Failed to set status: {}", e))
+                                        .ok();
+                                }
+                            } else {
+                                warn!("No sample available for node {}", node_id);
+                                node_state
+                                    .last_value
+                                    .set_status("unknown".to_owned())
+                                    .map_err(|e| warn!("Failed to set status: {}", e))
+                                    .ok();
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to receive reply for node {}: {}", node_id, e);
+                            node_state
+                                .last_value
+                                .set_status("unknown".to_owned())
+                                .map_err(|e| warn!("Failed to set status: {}", e))
+                                .ok();
+                        }
+                    }
+                }
+                Err(err) => {
+                    warn!("Failed to get status for node {}: {}", node_id, err);
+                    node_state
+                        .last_value
+                        .set_status("unknown".to_owned())
+                        .map_err(|e| warn!("Failed to set status: {}", e))
+                        .ok();
+                }
+            }
+        }
+        sleep(Duration::from_secs(1)).await; // Adjust the interval as needed
+    }
+
+    pub async fn update_node_config(&self, node_id: &str, config: Value) -> Result<()> {
+        let key = format!("fabric/{}/config", node_id);
+        let config_json = serde_json::to_string(&config).map_err(FabricError::SerdeJsonError)?;
+        let mut backoff = ExponentialBackoff::default();
+
+        loop {
+            match self.session.put(&key, config_json.clone()).res().await {
+                Ok(_) => return Ok(()),
+                Err(err) => {
+                    if let Some(duration) = backoff.next_backoff() {
+                        warn!(
+                            "Failed to update node config, retrying in {:?}: {}",
+                            duration, err
+                        );
+                        sleep(duration).await;
+                    } else {
+                        return Err(FabricError::Other(format!(
+                            "Failed to update node config: {}",
+                            err
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn get_id(&self) -> &str {
+        &self.id
+    }
+
+    pub async fn register_callback(
+        &self,
+        node_id: &str,
+        callback: Arc<Mutex<dyn Fn(NodeData) + Send + Sync>>,
+    ) -> Result<()> {
+        let mut callbacks = self.callbacks.lock().await;
+        callbacks.insert(node_id.to_string(), callback);
+        Ok(())
     }
 }

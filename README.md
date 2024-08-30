@@ -18,21 +18,25 @@
   - `examples/`: Example implementations using the fabric library
     - `example_node/`: Example of a Rust node implementation
     - `example_orchestrator/`: Example of a Rust orchestrator implementation
-- `python/` (Not implemented in the current codebase)
-  - `sensor_node/`: Python implementation of a sensor node
-  - `control_node/`: Python implementation of the control node
+- `python/`
+  - `fabric/`: Core Python library for the fabric system
+    - `src/`: Source code for the fabric library
+    - `tests/`: Integration tests for the fabric library
+  - `examples/`: Example implementations using the fabric library
+    - `example_node/`: Example of a Python node implementation
+    - `example_orchestrator/`: Example of a Python orchestrator implementation
 - `.github/workflows/`: CI/CD configuration
 
 ## Features
 
-- Flexible node system with support for different node types (e.g., generic, radio)
-- Central orchestrator for managing and configuring nodes
-- Real-time data publishing and subscription
+- Flexible node system with support for different custom node types (e.g., generic, radio)
+- (Optional) Central orchestrator for managing and configuring nodes
+- Real-time data pub/sub using [Zenoh](https://zenoh.io/)
 - Dynamic configuration updates
 - Plugin system for extending node functionality
 - Comprehensive error handling
-- Asynchronous operations using Tokio
-- Integration with the Zenoh communication framework
+- Asynchronous operations (in Rust using [Tokio](https://tokio.rs/))
+- Integration with the [Zenoh](https://zenoh.io/) communication framework
 
 ## Prerequisites
 
@@ -47,21 +51,21 @@
 1. Build the Rust sensor node:
 
    ```
-   docker build -t rust_sensor_node_dependencies:latest -f rust/docker/sensor_dependencies.Dockerfile .
-   docker build -t rust_sensor_node:latest -f rust/docker/sensor_package.Dockerfile .
+   docker build -t rust_node_dependencies:latest -f rust/docker/node_dependencies.Dockerfile .
+   docker build -t rust_node:latest -f rust/docker/node.Dockerfile .
    ```
 
 2. Build the Python sensor node:
 
    ```
-   docker build -t python_sensor_node_dependencies:latest -f python/docker/sensor_dependencies.Dockerfile .
-   docker build -t python_sensor_node:latest -f python/docker/sensor_package.Dockerfile .
+   docker build -t python_node_dependencies:latest -f python/docker/node_dependencies.Dockerfile .
+   docker build -t python_node:latest -f python/docker/node.Dockerfile .
    ```
 
 3. Build the control node:
    ```
-   docker build -t rust_control_node_dependencies:latest -f rust/docker/control_dependencies.Dockerfile .
-   docker build -t rust_control_node:latest -f rust/docker/control_package.Dockerfile .
+   docker build -t rust_orchestrator_dependencies:latest -f rust/docker/orchestrator_dependencies.Dockerfile .
+   docker build -t rust_orchestrator:latest -f rust/docker/orchestrator.Dockerfile .
    ```
 
 ## Deploying with Kubernetes
@@ -204,6 +208,31 @@ To set up a custom local deployment with a specific number of hosts and sensors 
 This approach allows you to easily customize the number of hosts, sensors per host, and their configurations using a single `values.yaml` file.
 
 Remember to adjust your Dockerfiles and build processes if you need to make changes to the sensor or control node implementations.
+
+## Development
+
+### Pre-commit Hooks
+
+This project uses pre-commit hooks to ensure code quality and consistency. To set up pre-commit hooks:
+
+1. Install pre-commit:
+
+   ```
+   pip install pre-commit
+   ```
+
+2. Install the git hook scripts:
+
+   ```
+   pre-commit install
+   ```
+
+3. (Optional) Run against all files:
+   ```
+   pre-commit run --all-files
+   ```
+
+The pre-commit configuration can be found in `.pre-commit-config.yaml`.
 
 ## Cleaning Up
 
