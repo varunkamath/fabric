@@ -1,6 +1,7 @@
 use crate::error::Result;
-use crate::node::interface::{NodeConfig, NodeData, NodeInterface};
+use crate::node::interface::{NodeConfig, NodeInterface};
 use async_trait::async_trait;
+use std::any::Any;
 
 pub struct GenericNode {
     config: NodeConfig,
@@ -11,37 +12,18 @@ impl GenericNode {
         Self { config }
     }
 
-    pub fn set_config(&mut self, config: NodeConfig) {
+    pub async fn set_config(&mut self, config: NodeConfig) {
         self.config = config;
     }
 }
 
 #[async_trait]
 impl NodeInterface for GenericNode {
-    async fn read(&self) -> Result<f64> {
-        // Implement generic read logic here
-        Ok(0.0)
-    }
-
-    async fn read_data(&self) -> Result<NodeData> {
-        // Implement generic read_data logic here
-        Ok(NodeData {
-            node_id: self.config.node_id.clone(),
-            node_type: "generic".to_string(),
-            status: "online".to_string(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata: None,
-        })
-    }
-
     fn get_config(&self) -> NodeConfig {
         self.config.clone()
     }
 
-    fn set_config(&mut self, config: NodeConfig) {
+    async fn set_config(&mut self, config: NodeConfig) {
         self.config = config;
     }
 
@@ -54,7 +36,11 @@ impl NodeInterface for GenericNode {
         Ok(())
     }
 
-    fn update_config(&mut self, config: NodeConfig) {
+    async fn update_config(&mut self, config: NodeConfig) {
         self.config = config;
+    }
+
+    fn as_any(&mut self) -> &mut dyn Any {
+        self
     }
 }

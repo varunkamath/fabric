@@ -1,25 +1,24 @@
 use crate::error::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-
+use std::any::Any;
 #[async_trait]
 pub trait NodeInterface: Send + Sync {
-    async fn read(&self) -> Result<f64>;
-    async fn read_data(&self) -> Result<NodeData>;
     fn get_config(&self) -> NodeConfig;
-    fn set_config(&mut self, config: NodeConfig);
+    async fn set_config(&mut self, config: NodeConfig);
     fn get_type(&self) -> String;
     async fn handle_event(&mut self, event: &str, payload: &str) -> Result<()>;
-    fn update_config(&mut self, config: NodeConfig);
+    async fn update_config(&mut self, config: NodeConfig);
+    fn as_any(&mut self) -> &mut dyn Any;
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeConfig {
     pub node_id: String,
     pub config: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NodeData {
     pub node_id: String,
     pub node_type: String,

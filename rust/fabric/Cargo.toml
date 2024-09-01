@@ -1,8 +1,8 @@
 [package]
 name = "fabric"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
-authors = ["Varun Kamath <varun.kamath@example.com>"]
+authors = ["Varun Kamath <varun.kamath@gmail.com>"]
 description = "A library for building networks of autonomous agents"
 license = "MIT"
 

@@ -2,13 +2,25 @@ use crate::error::{FabricError, Result};
 use crate::node::generic::GenericNode;
 use crate::node::interface::NodeData;
 use crate::node::interface::{NodeConfig, NodeInterface};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Notify;
+use tokio::sync::mpsc;
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
+
+struct Publisher {
+    topic: String,
+    zenoh_publisher: zenoh::publication::Publisher<'static>,
+}
+
+pub struct Subscriber {
+    topic: String,
+    callback: Arc<Mutex<dyn Fn(Sample) + Send + Sync>>,
+    zenoh_subscriber: zenoh::subscriber::Subscriber<'static, ()>,
+}
 
 #[derive(Clone)]
 pub struct Node {
@@ -17,7 +29,9 @@ pub struct Node {
     config: Arc<RwLock<NodeConfig>>,
     session: Arc<Session>,
     interface: Arc<Mutex<Box<dyn NodeInterface + Send + Sync>>>,
-    data_notify: Arc<Notify>,
+    publishers: Arc<RwLock<HashMap<String, Publisher>>>,
+    subscribers: Arc<RwLock<HashMap<String, Subscriber>>>,
+    subscriber_tx: mpsc::Sender<Sample>,
 }
 
 impl Node {
@@ -28,6 +42,7 @@ impl Node {
         session: Arc<Session>,
         interface: Option<Box<dyn NodeInterface + Send + Sync>>,
     ) -> Result<Self> {
+        let (subscriber_tx, subscriber_rx) = mpsc::channel(100);
         let interface = match interface {
             Some(interface) => interface,
             None => Box::new(GenericNode::new(config.clone())),
@@ -39,8 +54,16 @@ impl Node {
             config: Arc::new(RwLock::new(config)),
             session,
             interface: Arc::new(Mutex::new(interface)),
-            data_notify: Arc::new(Notify::new()),
+            publishers: Arc::new(RwLock::new(HashMap::new())),
+            subscribers: Arc::new(RwLock::new(HashMap::new())),
+            subscriber_tx,
         };
+
+        // Spawn a task to handle subscriber samples
+        let node_clone = node.clone();
+        tokio::spawn(async move {
+            node_clone.handle_subscriber_samples(subscriber_rx).await;
+        });
 
         Ok(node)
     }
@@ -49,16 +72,12 @@ impl Node {
         info!("Starting node {}", self.id);
 
         let key_expr = format!("node/{}/config", self.id);
-        let subscriber = self
+        let config_subscriber = self
             .session
             .declare_subscriber(&key_expr)
             .res()
             .await
             .map_err(|e| FabricError::ZenohError(e))?;
-
-        let data_notify = self.data_notify.clone();
-        let interface = self.interface.clone();
-        let node_id = self.id.clone();
 
         // Initial status update
         self.update_status("online".to_string()).await?;
@@ -68,7 +87,7 @@ impl Node {
             let cancel_clone = cancel.clone();
             let self_clone = self.clone();
             tokio::spawn(async move {
-                let mut interval = interval(Duration::from_secs(1));
+                let mut interval = interval(Duration::from_millis(1000));
                 loop {
                     tokio::select! {
                         _ = cancel_clone.cancelled() => {
@@ -84,31 +103,16 @@ impl Node {
             })
         };
 
-        tokio::spawn(async move {
-            loop {
-                let data = interface.lock().await.read_data().await;
-                match data {
-                    Ok(data) => {
-                        debug!("Node {} read data: {:?}", node_id, data);
-                        data_notify.notify_one();
-                    }
-                    Err(e) => {
-                        warn!("Error reading data for node {}: {:?}", node_id, e);
-                    }
-                }
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        });
-
         loop {
             tokio::select! {
                 _ = cancel.cancelled() => {
                     info!("Node {} received cancellation signal", self.id);
                     break;
                 }
-                sample = subscriber.recv_async() => {
+                sample = config_subscriber.recv_async() => {
                     match sample {
                         Ok(sample) => {
+                            // TODO: Change this. Orchestrator publishes serialized JSON
                             let new_config: NodeConfig = serde_json::from_slice(sample.value.payload.contiguous().as_ref())
                                 .map_err(|e| FabricError::SerdeJsonError(e))?;
                             info!("Node {} received new configuration: {:?}", self.id, new_config);
@@ -118,13 +122,6 @@ impl Node {
                             warn!("Error receiving configuration for node {}: {:?}", self.id, e);
                         }
                     }
-                }
-                _ = self.data_notify.notified() => {
-                    let data = self.interface.lock().await.read_data().await?;
-                    let key_expr = format!("node/{}/data", self.id);
-                    let payload = serde_json::to_vec(&data).map_err(|e| FabricError::SerdeJsonError(e))?;
-                    self.session.put(&key_expr, payload).res().await.map_err(|e| FabricError::ZenohError(e))?;
-                    debug!("Published data for node {}: {:?}", self.id, data);
                 }
             }
         }
@@ -142,7 +139,8 @@ impl Node {
         self.interface
             .lock()
             .await
-            .update_config(new_config.clone());
+            .update_config(new_config.clone())
+            .await;
         // Update the Node's config field
         let mut config = self.config.write().await;
         *config = new_config;
@@ -153,10 +151,6 @@ impl Node {
         self.config.read().await.clone()
     }
 
-    pub async fn read(&self) -> Result<f64> {
-        self.interface.lock().await.read().await
-    }
-
     pub fn get_id(&self) -> &str {
         &self.id
     }
@@ -165,14 +159,8 @@ impl Node {
         &self.node_type
     }
 
-    pub async fn declare_node_data_publisher(&self) -> Result<()> {
-        let key_expr = format!("node/{}/data", self.id);
-        self.session
-            .declare_publisher(key_expr)
-            .res()
-            .await
-            .map_err(|e| FabricError::ZenohError(e))?;
-        Ok(())
+    pub async fn get_interface(&self) -> Result<Arc<Mutex<Box<dyn NodeInterface + Send + Sync>>>> {
+        Ok(self.interface.clone())
     }
 
     pub async fn set_interface(
@@ -197,18 +185,6 @@ impl Node {
         self.publish_node_status(&node_data).await
     }
 
-    async fn publish_node_data(&self, node_data: &NodeData) -> Result<()> {
-        let key_expr = format!("node/{}/data", self.id);
-        let payload = serde_json::to_vec(node_data).map_err(|e| FabricError::SerdeJsonError(e))?;
-        self.session
-            .put(&key_expr, payload)
-            .res()
-            .await
-            .map_err(|e| FabricError::ZenohError(e))?;
-        debug!("Published data for node {}: {:?}", self.id, node_data);
-        Ok(())
-    }
-
     async fn publish_node_status(&self, node_data: &NodeData) -> Result<()> {
         let key_expr = format!("fabric/{}/status", self.id);
         let payload = serde_json::to_vec(node_data).map_err(|e| FabricError::SerdeJsonError(e))?;
@@ -220,4 +196,93 @@ impl Node {
         debug!("Published status for node {}: {:?}", self.id, node_data);
         Ok(())
     }
+
+    pub async fn create_publisher(&self, topic: String) -> Result<()> {
+        let key_expr = topic.clone();
+        let zenoh_publisher = self
+            .session
+            .declare_publisher(key_expr)
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+
+        let publisher = Publisher {
+            topic: topic.clone(),
+            zenoh_publisher,
+        };
+        debug!("Created publisher for topic: {}", publisher.topic.clone());
+
+        self.publishers.write().await.insert(topic, publisher);
+        Ok(())
+    }
+
+    pub async fn publish(&self, topic: &str, data: Vec<u8>) -> Result<()> {
+        let publishers = self.publishers.read().await;
+        if let Some(publisher) = publishers.get(topic) {
+            publisher
+                .zenoh_publisher
+                .put(data)
+                .res()
+                .await
+                .map_err(|e| FabricError::ZenohError(e))?;
+            Ok(())
+        } else {
+            Err(FabricError::Other(format!(
+                "Publisher not found for topic: {}",
+                topic
+            )))
+        }
+    }
+
+    pub async fn create_subscriber(
+        &self,
+        topic: String,
+        callback: Arc<Mutex<dyn Fn(Sample) + Send + Sync>>,
+    ) -> Result<()> {
+        let key_expr = topic.clone();
+        let subscriber_tx = self.subscriber_tx.clone();
+        let zenoh_subscriber = self
+            .session
+            .declare_subscriber(&key_expr)
+            .callback(move |sample| {
+                let tx = subscriber_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = tx.send(sample).await {
+                        error!("Failed to send sample to handler: {:?}", e);
+                    }
+                });
+            })
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+
+        let subscriber = Subscriber {
+            topic: topic.clone(),
+            callback,
+            zenoh_subscriber,
+        };
+
+        debug!("Created subscriber for topic: {}", subscriber.topic);
+
+        self.subscribers.write().await.insert(topic, subscriber);
+        Ok(())
+    }
+
+    async fn handle_subscriber_samples(&self, mut rx: mpsc::Receiver<Sample>) {
+        while let Some(sample) = rx.recv().await {
+            let subscribers = self.subscribers.read().await;
+            for subscriber in subscribers.values() {
+                if subscriber
+                    .zenoh_subscriber
+                    .key_expr()
+                    .intersects(sample.key_expr.as_keyexpr())
+                {
+                    let callback = subscriber.callback.lock().await;
+                    callback(sample.clone());
+                }
+            }
+        }
+    }
+
+    // Remove the old handle_subscriber_samples method
 }

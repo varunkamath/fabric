@@ -1,0 +1,28 @@
+quadcopters:
+  - name: quadcopter1
+    type: quadcopter
+    max_altitude: 190.0
+    max_speed: 35.0
+    home_position: [0.5, 0.0, 0.0]
+    battery_threshold: 20.0
+
+  - name: quadcopter2
+    type: quadcopter
+    max_altitude: 120.0
+    max_speed: 12.0
+    home_position: [10.0, 10.0, 0.0]
+    battery_threshold: 15.0
+
+  - name: quadcopter3
+    type: quadcopter
+    max_altitude: 80.0
+    max_speed: 8.0
+    home_position: [-10.0, -10.0, 0.0]
+    battery_threshold: 25.0
+
+  - name: quadcopter4
+    type: quadcopter
+    max_altitude: 150.0
+    max_speed: 15.0
+    home_position: [20.0, -20.0, 0.0]
+    battery_threshold: 18.0

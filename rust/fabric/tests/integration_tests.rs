@@ -23,7 +23,7 @@ async fn create_zenoh_session() -> Arc<Session> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_node_creation_and_run() -> fabric::Result<()> {
+async fn test_node_config_and_run() -> fabric::Result<()> {
     init_logger(LevelFilter::Info);
 
     let mut config = config::peer();
@@ -50,7 +50,8 @@ async fn test_node_creation_and_run() -> fabric::Result<()> {
         .await?,
     );
 
-    node.declare_node_data_publisher().await?;
+    node.create_publisher("node/test_node/data".to_string())
+        .await?;
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -61,8 +62,8 @@ async fn test_node_creation_and_run() -> fabric::Result<()> {
 
     wait_for_node_initialization().await;
 
-    let data = node.read().await?;
-    info!("Read data from node: {}", data);
+    let data = node.get_config().await;
+    info!("Read config from node: {:?}", data);
 
     let updated_config = NodeConfig {
         node_id: "test_node".to_string(),
@@ -77,11 +78,12 @@ async fn test_node_creation_and_run() -> fabric::Result<()> {
 
     wait_for_node_initialization().await;
 
-    let updated_data = node.read().await?;
-    info!("Read updated data from node: {}", updated_data);
+    let updated_data = node.get_config().await;
+    info!("Read updated config from node: {:?}", updated_data);
 
     cancel.cancel();
 
+    assert_eq!(updated_data, updated_config);
     Ok(())
 }
 
@@ -156,11 +158,11 @@ async fn test_orchestrator_node_communication() -> fabric::Result<()> {
 
     wait_for_node_initialization().await;
 
-    let node1_data = node1.read().await?;
-    let node2_data = node2.read().await?;
+    let node1_data = node1.get_config().await;
+    let node2_data = node2.get_config().await;
 
-    info!("Node 1 data: {}", node1_data);
-    info!("Node 2 data: {}", node2_data);
+    info!("Node 1 data: {:?}", node1_data);
+    info!("Node 2 data: {:?}", node2_data);
 
     cancel.cancel();
 
@@ -446,6 +448,133 @@ async fn test_multi_node_config_application() -> fabric::Result<()> {
     for handle in node_handles {
         let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
     }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_custom_message_publish_subscribe() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
+
+    let session = create_zenoh_session().await;
+    let orchestrator = Arc::new(
+        Orchestrator::new(
+            "test_custom_message_orchestrator".to_string(),
+            session.clone(),
+        )
+        .await?,
+    );
+
+    let node_config = NodeConfig {
+        node_id: "custom_message_node".to_string(),
+        config: serde_json::json!({}),
+    };
+
+    let node = Arc::new(
+        Node::new(
+            node_config.node_id.clone(),
+            "generic".to_string(),
+            node_config.clone(),
+            session.clone(),
+            None,
+        )
+        .await?,
+    );
+
+    // Create a channel to receive messages in the test
+    let (tx, mut rx) = mpsc::channel(100);
+
+    // Declare custom topics
+    let custom_topic = "test_custom_topic";
+    orchestrator
+        .create_subscriber(
+            custom_topic.to_string(),
+            Arc::new(Mutex::new(move |sample: Sample| {
+                let tx = tx.clone();
+                let payload = sample.value.payload.contiguous().to_vec();
+                tokio::spawn(async move {
+                    tx.send(payload).await.unwrap();
+                });
+            })),
+        )
+        .await?;
+    node.create_publisher(custom_topic.to_string()).await?;
+
+    // Start the orchestrator and node
+    let orchestrator_cancel = CancellationToken::new();
+    let node_cancel = CancellationToken::new();
+
+    let orchestrator_clone = orchestrator.clone();
+    let orchestrator_cancel_clone = orchestrator_cancel.clone();
+    let orchestrator_handle = tokio::spawn(async move {
+        orchestrator_clone
+            .run(orchestrator_cancel_clone)
+            .await
+            .unwrap();
+    });
+
+    let node_clone = node.clone();
+    let node_cancel_clone = node_cancel.clone();
+    let node_handle = tokio::spawn(async move {
+        node_clone.run(node_cancel_clone).await.unwrap();
+    });
+
+    // Wait for initialization
+    wait_for_node_initialization().await;
+
+    // Publish a custom message from the node
+    let custom_message = "Hello, Orchestrator!".as_bytes().to_vec();
+    info!("Publishing message: {:?}", custom_message);
+    node.publish(custom_topic, custom_message.clone()).await?;
+
+    // Wait for the message to be received with a timeout
+    info!("Waiting for message...");
+    let received_message = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .map_err(|_| {
+            info!("Timeout occurred while waiting for message");
+            FabricError::Other("Timeout waiting for message".into())
+        })?
+        .ok_or_else(|| FabricError::Other("Channel closed".into()))?;
+
+    info!("Received message: {:?}", received_message);
+
+    // Verify the received message
+    assert_eq!(
+        received_message, custom_message,
+        "Received message does not match sent message"
+    );
+
+    // Publish another message to ensure multiple messages can be sent and received
+    let second_message = "Second message".as_bytes().to_vec();
+    info!("Publishing second message: {:?}", second_message);
+    node.publish(custom_topic, second_message.clone()).await?;
+
+    // Wait for the second message
+    info!("Waiting for second message...");
+    let received_second_message = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .map_err(|_| {
+            info!("Timeout occurred while waiting for second message");
+            FabricError::Other("Timeout waiting for second message".into())
+        })?
+        .ok_or_else(|| FabricError::Other("Channel closed".into()))?;
+
+    info!("Received second message: {:?}", received_second_message);
+
+    // Verify the second received message
+    assert_eq!(
+        received_second_message, second_message,
+        "Received second message does not match sent message"
+    );
+
+    // Cleanup
+    orchestrator_cancel.cancel();
+    node_cancel.cancel();
+
+    // Wait for tasks to complete with a timeout
+    let _ = tokio::time::timeout(Duration::from_secs(5), orchestrator_handle).await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), node_handle).await;
 
     Ok(())
 }

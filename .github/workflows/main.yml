@@ -17,7 +17,7 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup component add rustfmt clippy
-          apt-get update && apt-get install -y lld
+          sudo apt-get update && sudo apt-get install -y lld
 
       - name: Format Rust code
         run: cargo fmt --all -- --check

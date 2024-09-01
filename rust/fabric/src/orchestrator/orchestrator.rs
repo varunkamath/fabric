@@ -2,17 +2,28 @@ use super::NodeState;
 use crate::error::{FabricError, Result};
 use crate::node::interface::{NodeConfig, NodeData};
 use backoff::{backoff::Backoff, ExponentialBackoff}; // Add this line
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+use tokio::sync::{Mutex, RwLock};
 use tokio::time::interval;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
-use zenoh::subscriber::Subscriber;
+
+pub struct Publisher {
+    topic: String,
+    zenoh_publisher: zenoh::publication::Publisher<'static>,
+}
+
+pub struct Subscriber {
+    topic: String,
+    callback: Arc<Mutex<dyn Fn(Sample) + Send + Sync>>,
+    zenoh_subscriber: zenoh::subscriber::Subscriber<'static, ()>,
+}
 
 #[derive(Clone)]
 pub struct Orchestrator {
@@ -20,21 +31,36 @@ pub struct Orchestrator {
     pub session: Arc<Session>,
     pub nodes: Arc<Mutex<HashMap<String, NodeState>>>,
     callbacks: Arc<Mutex<HashMap<String, Arc<Mutex<dyn Fn(NodeData) + Send + Sync>>>>>,
-    pub subscribers: Arc<Mutex<HashMap<String, Subscriber<'static, ()>>>>,
-    status_subscriber: Arc<Mutex<Option<Subscriber<'static, ()>>>>,
+    pub subscribers: Arc<RwLock<HashMap<String, Subscriber>>>,
+    pub publishers: Arc<RwLock<HashMap<String, Publisher>>>,
+    status_subscriber: Arc<Mutex<Option<zenoh::subscriber::Subscriber<'static, ()>>>>,
+    subscriber_tx: mpsc::Sender<Sample>,
 }
 
 impl Orchestrator {
     pub async fn new(id: String, session: Arc<Session>) -> Result<Self> {
         info!("Creating new orchestrator: {}", id);
-        Ok(Self {
+        let (subscriber_tx, subscriber_rx) = mpsc::channel(100);
+        let orchestrator = Self {
             id,
             session,
             nodes: Arc::new(Mutex::new(HashMap::new())),
             callbacks: Arc::new(Mutex::new(HashMap::new())),
-            subscribers: Arc::new(Mutex::new(HashMap::new())),
+            subscribers: Arc::new(RwLock::new(HashMap::new())),
+            publishers: Arc::new(RwLock::new(HashMap::new())),
             status_subscriber: Arc::new(Mutex::new(None)),
-        })
+            subscriber_tx,
+        };
+
+        // Spawn a task to handle subscriber samples
+        let orchestrator_clone = orchestrator.clone();
+        tokio::spawn(async move {
+            orchestrator_clone
+                .handle_subscriber_samples(subscriber_rx)
+                .await;
+        });
+
+        Ok(orchestrator)
     }
 
     pub async fn run(&self, cancel: CancellationToken) -> Result<()> {
@@ -324,6 +350,93 @@ impl Orchestrator {
                             callback(node_state.last_value.clone());
                         }
                     }
+                }
+            }
+        }
+    }
+
+    pub async fn create_publisher(&self, topic: String) -> Result<()> {
+        let key_expr = topic.clone();
+        let zenoh_publisher = self
+            .session
+            .declare_publisher(key_expr)
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+
+        let publisher = Publisher {
+            topic: topic.clone(),
+            zenoh_publisher,
+        };
+        debug!("Created publisher for topic: {}", publisher.topic.clone());
+
+        self.publishers.write().await.insert(topic, publisher);
+        Ok(())
+    }
+
+    pub async fn publish(&self, topic: &str, data: Vec<u8>) -> Result<()> {
+        let publishers = self.publishers.read().await;
+        if let Some(publisher) = publishers.get(topic) {
+            publisher
+                .zenoh_publisher
+                .put(data)
+                .res()
+                .await
+                .map_err(|e| FabricError::ZenohError(e))?;
+            Ok(())
+        } else {
+            Err(FabricError::Other(format!(
+                "Publisher not found for topic: {}",
+                topic
+            )))
+        }
+    }
+
+    pub async fn create_subscriber(
+        &self,
+        topic: String,
+        callback: Arc<Mutex<dyn Fn(Sample) + Send + Sync>>,
+    ) -> Result<()> {
+        let key_expr = topic.clone();
+        let subscriber_tx = self.subscriber_tx.clone();
+        let zenoh_subscriber = self
+            .session
+            .declare_subscriber(&key_expr)
+            .callback(move |sample| {
+                let tx = subscriber_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = tx.send(sample).await {
+                        error!("Failed to send sample to handler: {:?}", e);
+                    }
+                });
+            })
+            .res()
+            .await
+            .map_err(|e| FabricError::ZenohError(e))?;
+
+        let subscriber = Subscriber {
+            topic: topic.clone(),
+            callback,
+            zenoh_subscriber,
+        };
+
+        debug!("Created subscriber for topic: {}", subscriber.topic);
+
+        self.subscribers.write().await.insert(topic, subscriber);
+        Ok(())
+    }
+
+    async fn handle_subscriber_samples(&self, mut rx: mpsc::Receiver<Sample>) {
+        while let Some(sample) = rx.recv().await {
+            let subscribers = self.subscribers.read().await;
+            for subscriber in subscribers.values() {
+                if subscriber
+                    .zenoh_subscriber
+                    .key_expr()
+                    .intersects(sample.key_expr.as_keyexpr())
+                {
+                    let callback = subscriber.callback.lock().await;
+                    callback(sample.clone());
                 }
             }
         }
