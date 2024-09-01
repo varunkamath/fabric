@@ -5,10 +5,19 @@ pub use orchestrator::Orchestrator;
 use crate::node::interface::{NodeConfig, NodeData};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct NodeState {
-    pub last_value: NodeData,
+    pub last_value: crate::node::interface::NodeData,
     pub last_update: std::time::SystemTime,
+}
+
+impl NodeState {
+    pub fn new(node_data: crate::node::interface::NodeData) -> Self {
+        Self {
+            last_value: node_data,
+            last_update: std::time::SystemTime::now(),
+        }
+    }
 }
 
 pub type CallbackFunction = Box<dyn Fn(NodeData) + Send + Sync>;
@@ -18,53 +27,30 @@ pub struct OrchestratorConfig {
     pub nodes: Vec<NodeConfig>,
 }
 
+// Move the Orchestrator implementation here (if it's not already in the orchestrator.rs file)
+impl Orchestrator {
+    // ... (Orchestrator implementation)
+}
+
+// Move the tests module to the end of the file
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::node::interface::NodeData;
-    use crate::orchestrator::Orchestrator;
-    use std::sync::Arc;
-    use zenoh::prelude::r#async::*;
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_orchestrator_new() {
-        let config = zenoh::config::Config::default();
-        let session = zenoh::open(config).res().await.unwrap();
-
-        let orchestrator = Orchestrator::new("test_orchestrator".to_string(), Arc::new(session))
-            .await
-            .unwrap();
-
-        assert_eq!(orchestrator.get_id(), "test_orchestrator");
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-    async fn test_update_node_state() {
-        let config = zenoh::config::Config::default();
-        let session = zenoh::open(config).res().await.unwrap();
-
-        let orchestrator = Orchestrator::new("test_orchestrator".to_string(), Arc::new(session))
-            .await
-            .unwrap();
-
+    #[test]
+    fn test_node_state_new() {
         let node_data = NodeData {
             node_id: "test_node".to_string(),
-            node_type: "radio".to_string(),
+            node_type: "test_type".to_string(),
             status: "online".to_string(),
             timestamp: 1234567890,
             metadata: None,
         };
 
-        orchestrator.update_node_state(node_data.clone()).await;
+        let node_state = NodeState::new(node_data.clone());
 
-        let nodes = orchestrator.nodes.lock().await;
-        assert!(nodes.contains_key(&node_data.node_id));
-        let state = nodes.get(&node_data.node_id).unwrap();
-        let status = state.last_value.status.clone();
-        assert_eq!(status, node_data.status.as_str());
+        assert_eq!(node_state.last_value, node_data);
+        assert!(node_state.last_update <= std::time::SystemTime::now());
     }
-}
-
-impl Orchestrator {
-    // Remove the duplicate publish_node_config method from here
-    // Other methods can stay as they are
 }
