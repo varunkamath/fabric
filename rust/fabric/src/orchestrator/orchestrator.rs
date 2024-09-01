@@ -1,7 +1,7 @@
 use super::NodeState;
 use crate::error::{FabricError, Result};
 use crate::node::interface::{NodeConfig, NodeData};
-use backoff::{backoff::Backoff, ExponentialBackoff}; // Add this line
+use backoff::{backoff::Backoff, ExponentialBackoff};
 use log::{debug, error, info, warn};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -13,6 +13,9 @@ use tokio::time::interval;
 use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
 use zenoh::prelude::r#async::*;
+
+// Add this near the top of the file, after the imports
+type NodeDataCallback = Arc<Mutex<dyn Fn(NodeData) + Send + Sync>>;
 
 pub struct Publisher {
     topic: String,
@@ -30,7 +33,7 @@ pub struct Orchestrator {
     id: String,
     pub session: Arc<Session>,
     pub nodes: Arc<Mutex<HashMap<String, NodeState>>>,
-    callbacks: Arc<Mutex<HashMap<String, Arc<Mutex<dyn Fn(NodeData) + Send + Sync>>>>>,
+    callbacks: Arc<Mutex<HashMap<String, NodeDataCallback>>>,
     pub subscribers: Arc<RwLock<HashMap<String, Subscriber>>>,
     pub publishers: Arc<RwLock<HashMap<String, Publisher>>>,
     status_subscriber: Arc<Mutex<Option<zenoh::subscriber::Subscriber<'static, ()>>>>,
@@ -77,25 +80,16 @@ impl Orchestrator {
                 let mut interval = interval(Duration::from_secs(1));
                 loop {
                     tokio::select! {
-                        _ = cancel_clone.cancelled() => {
-                            break;
-                        }
-                        _ = interval.tick() => {
-                            self_clone.check_offline_nodes().await;
-                        }
+                        _ = cancel_clone.cancelled() => break,
+                        _ = interval.tick() => self_clone.check_offline_nodes().await,
                     }
                 }
             })
         };
 
-        loop {
-            tokio::select! {
-                _ = cancel.cancelled() => {
-                    info!("Orchestrator {} shutting down", self.id);
-                    break;
-                }
-            }
-        }
+        // Wait for cancellation
+        cancel.cancelled().await;
+        info!("Orchestrator {} shutting down", self.id);
 
         // Unsubscribe from node status topics
         self.unsubscribe_from_node_statuses().await?;
@@ -123,7 +117,7 @@ impl Orchestrator {
             })
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
 
         let mut status_subscriber = self.status_subscriber.lock().await;
         *status_subscriber = Some(subscriber);
@@ -139,7 +133,7 @@ impl Orchestrator {
                 .undeclare()
                 .res()
                 .await
-                .map_err(|e| FabricError::ZenohError(e))?;
+                .map_err(FabricError::ZenohError)?;
         }
         Ok(())
     }
@@ -362,7 +356,7 @@ impl Orchestrator {
             .declare_publisher(key_expr)
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
 
         let publisher = Publisher {
             topic: topic.clone(),
@@ -382,7 +376,7 @@ impl Orchestrator {
                 .put(data)
                 .res()
                 .await
-                .map_err(|e| FabricError::ZenohError(e))?;
+                .map_err(FabricError::ZenohError)?;
             Ok(())
         } else {
             Err(FabricError::Other(format!(
@@ -412,7 +406,7 @@ impl Orchestrator {
             })
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
 
         let subscriber = Subscriber {
             topic: topic.clone(),

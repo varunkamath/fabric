@@ -129,54 +129,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config_map_clone = config_map.clone();
     let orchestrator_clone = orchestrator.clone();
     let configured_nodes_clone = configured_nodes.clone();
-    match orchestrator
-        .create_subscriber(
-            "fabric/*/status".to_string(),
-            Arc::new(Mutex::new(move |sample: Sample| {
-                let config_map = config_map_clone.clone();
-                let orchestrator = orchestrator_clone.clone();
-                let configured_nodes = configured_nodes_clone.clone();
-                tokio::spawn(async move {
-                    if let Ok(node_data) =
-                        serde_json::from_slice::<NodeData>(&sample.value.payload.contiguous())
-                    {
-                        debug!("Received node health update: {:?}", node_data);
-                        let mut should_send_config = false;
-                        {
-                            let mut configured = configured_nodes.lock().await;
-                            if node_data.status == "online"
-                                && !configured.contains(&node_data.node_id)
-                            {
-                                configured.insert(node_data.node_id.clone());
-                                should_send_config = true;
-                            }
-                        }
-                        if should_send_config {
-                            if let Some(config) = config_map.get(&node_data.node_id) {
-                                if let Err(e) = send_node_config(
-                                    &orchestrator,
-                                    &node_data.node_id,
-                                    config.value(),
-                                )
+
+    let node_health_callback = Arc::new(Mutex::new(move |sample: Sample| {
+        let config_map = config_map_clone.clone();
+        let orchestrator = orchestrator_clone.clone();
+        let configured_nodes = configured_nodes_clone.clone();
+        tokio::spawn(async move {
+            if let Ok(node_data) =
+                serde_json::from_slice::<NodeData>(&sample.value.payload.contiguous())
+            {
+                debug!("Received node health update: {:?}", node_data);
+                let mut should_send_config = false;
+                {
+                    let mut configured = configured_nodes.lock().await;
+                    if node_data.status == "online" && !configured.contains(&node_data.node_id) {
+                        configured.insert(node_data.node_id.clone());
+                        should_send_config = true;
+                    }
+                }
+                if should_send_config {
+                    if let Some(config) = config_map.get(&node_data.node_id) {
+                        if let Err(e) =
+                            send_node_config(&orchestrator, &node_data.node_id, config.value())
                                 .await
-                                {
-                                    error!(
-                                        "Failed to send config to node {}: {:?}",
-                                        node_data.node_id, e
-                                    );
-                                } else {
-                                    info!("Sent initial config to node {}", node_data.node_id);
-                                }
-                            } else {
-                                warn!("No configuration found for node {}", node_data.node_id);
-                            }
+                        {
+                            error!(
+                                "Failed to send config to node {}: {:?}",
+                                node_data.node_id, e
+                            );
+                        } else {
+                            info!("Sent initial config to node {}", node_data.node_id);
                         }
                     } else {
-                        error!("Failed to parse node health data");
+                        warn!("No configuration found for node {}", node_data.node_id);
                     }
-                });
-            })),
-        )
+                }
+            } else {
+                error!("Failed to parse node health data");
+            }
+        });
+    }));
+
+    match orchestrator
+        .create_subscriber("fabric/*/status".to_string(), node_health_callback)
         .await
     {
         Ok(_) => info!("Successfully subscribed to node health"),
@@ -212,17 +207,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Subscribe to telemetry
     info!("Subscribing to telemetry");
+    let telemetry_callback = Arc::new(Mutex::new(move |sample: Sample| {
+        let telemetry_tx = telemetry_tx.clone();
+        tokio::spawn(async move {
+            if let Err(e) = telemetry_tx.send(sample).await {
+                error!("Failed to send telemetry to processing task: {:?}", e);
+            }
+        });
+    }));
+
     match orchestrator
         .create_subscriber(
             "node/*/quadcopter/telemetry".to_string(),
-            Arc::new(Mutex::new(move |sample: Sample| {
-                let telemetry_tx = telemetry_tx.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = telemetry_tx.send(sample).await {
-                        error!("Failed to send telemetry to processing task: {:?}", e);
-                    }
-                });
-            })),
+            telemetry_callback,
         )
         .await
     {

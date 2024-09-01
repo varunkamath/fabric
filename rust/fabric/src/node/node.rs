@@ -77,7 +77,7 @@ impl Node {
             .declare_subscriber(&key_expr)
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
 
         // Initial status update
         self.update_status("online".to_string()).await?;
@@ -112,9 +112,8 @@ impl Node {
                 sample = config_subscriber.recv_async() => {
                     match sample {
                         Ok(sample) => {
-                            // TODO: Change this. Orchestrator publishes serialized JSON
                             let new_config: NodeConfig = serde_json::from_slice(sample.value.payload.contiguous().as_ref())
-                                .map_err(|e| FabricError::SerdeJsonError(e))?;
+                                .map_err(FabricError::SerdeJsonError)?;
                             info!("Node {} received new configuration: {:?}", self.id, new_config);
                             self.update_config(new_config).await?;
                         }
@@ -187,12 +186,12 @@ impl Node {
 
     async fn publish_node_status(&self, node_data: &NodeData) -> Result<()> {
         let key_expr = format!("fabric/{}/status", self.id);
-        let payload = serde_json::to_vec(node_data).map_err(|e| FabricError::SerdeJsonError(e))?;
+        let payload = serde_json::to_vec(node_data).map_err(FabricError::SerdeJsonError)?;
         self.session
             .put(&key_expr, payload)
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
         debug!("Published status for node {}: {:?}", self.id, node_data);
         Ok(())
     }
@@ -204,7 +203,7 @@ impl Node {
             .declare_publisher(key_expr)
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
 
         let publisher = Publisher {
             topic: topic.clone(),
@@ -224,7 +223,7 @@ impl Node {
                 .put(data)
                 .res()
                 .await
-                .map_err(|e| FabricError::ZenohError(e))?;
+                .map_err(FabricError::ZenohError)?;
             Ok(())
         } else {
             Err(FabricError::Other(format!(
@@ -254,7 +253,7 @@ impl Node {
             })
             .res()
             .await
-            .map_err(|e| FabricError::ZenohError(e))?;
+            .map_err(FabricError::ZenohError)?;
 
         let subscriber = Subscriber {
             topic: topic.clone(),
