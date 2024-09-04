@@ -168,8 +168,10 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     info!("Starting quadcopter node");
+    // Get vehicle ID from environment variable
+    let vehicle_id = std::env::var("VEHICLE_ID").unwrap_or_else(|_| "quadcopter1".to_string());
     let config = NodeConfig {
-        node_id: "quadcopter1".to_string(),
+        node_id: vehicle_id,
         config: json!({}),
     };
     let config_clone = config.clone();

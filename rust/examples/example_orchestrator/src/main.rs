@@ -247,7 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 for entry in states.iter() {
                     let (quadcopter_id, (telemetry, _)) = entry.pair();
                     info!("Current state of {}: battery_level = {}", quadcopter_id, telemetry.battery_level);
-                    if telemetry.battery_level < 20.0 {
+                    if telemetry.battery_level < 90.0 {
                         let command = QuadcopterCommand::Land;
                         warn!("Battery level for {} is low. Commanding to land.", quadcopter_id);
                         if let Err(e) = send_command(quadcopter_id, &command).await {
