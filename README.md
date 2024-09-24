@@ -7,29 +7,35 @@
 
 #### Framework Agnostically Bridging Resilient Interconnected Components
 
-`fabric` is a distributed sensor network system that demonstrates the integration of multiple sensor nodes with a central control node using the Zenoh communication framework. This project showcases the interoperability between Rust and Python implementations, containerization with Docker, and deployment using Kubernetes.
+`fabric` is a robust framework for building networks of autonomous agents, providing a flexible and scalable solution for creating, managing, and orchestrating distributed systems.
+
+## Features
+
+- **Node Management**: Create and manage individual nodes with customizable configurations.
+- **Orchestration**: Centralized control and monitoring of multiple nodes.
+- **Real-time Communication**: Utilizes Zenoh for efficient, real-time data exchange between nodes and the orchestrator.
+- **Dynamic Configuration**: Nodes can receive and apply configuration updates at runtime.
+- **Health Monitoring**: Automatic health checks and status updates for all nodes.
+- **Fault Tolerance**: Detects and handles node failures, with automatic offline status updates after 10 seconds of inactivity.
+- **Extensible**: Easily create custom node types by implementing the `NodeInterface` trait.
 
 ## Project Structure
 
 - `rust/`
-  - `sensor_node/`: Rust implementation of a sensor node
-  - `control_node/`: Rust implementation of the control node
-  - `docker/`: Dockerfiles for Rust components
+  - `fabric/`: Core Rust library for the fabric system
+    - `src/`: Source code for the fabric library
+    - `tests/`: Integration tests for the fabric library
+  - `examples/`: Example implementations using the fabric library
+    - `example_node/`: Example of a Rust node implementation
+    - `example_orchestrator/`: Example of a Rust orchestrator implementation
 - `python/`
-  - `sensor_node/`: Python implementation of a sensor node
-  - `control_node/`: Python implementation of the control node
-  - `docker/`: Dockerfiles for Python components
-- `local-sensor-network.yaml`: Kubernetes configuration for local deployment
-- `distributed-sensor-network.yaml`: Kubernetes configuration for distributed deployment
-
-## Features
-
-- Multiple sensor nodes (both Rust and Python implementations)
-- Central control node for orchestration
-- Real-time data publishing and subscription
-- Dynamic configuration updates
-- Containerized deployment using Docker
-- Kubernetes-based orchestration for both local and distributed setups
+  - `fabric/`: Core Python library for the fabric system
+    - `src/`: Source code for the fabric library
+    - `tests/`: Integration tests for the fabric library
+  - `examples/`: Example implementations using the fabric library
+    - `example_node/`: Example of a Python node implementation
+    - `example_orchestrator/`: Example of a Python orchestrator implementation
+- `.github/workflows/`: CI/CD configuration
 
 ## Prerequisites
 
@@ -44,21 +50,21 @@
 1. Build the Rust sensor node:
 
    ```
-   docker build -t rust_sensor_node_dependencies:latest -f rust/docker/sensor_dependencies.Dockerfile .
-   docker build -t rust_sensor_node:latest -f rust/docker/sensor_package.Dockerfile .
+   docker build -t rust_node_dependencies:latest -f rust/docker/node_dependencies.Dockerfile .
+   docker build -t rust_node:latest -f rust/docker/node.Dockerfile .
    ```
 
 2. Build the Python sensor node:
 
    ```
-   docker build -t python_sensor_node_dependencies:latest -f python/docker/sensor_dependencies.Dockerfile .
-   docker build -t python_sensor_node:latest -f python/docker/sensor_package.Dockerfile .
+   docker build -t python_node_dependencies:latest -f python/docker/node_dependencies.Dockerfile .
+   docker build -t python_node:latest -f python/docker/node.Dockerfile .
    ```
 
 3. Build the control node:
    ```
-   docker build -t rust_control_node_dependencies:latest -f rust/docker/control_dependencies.Dockerfile .
-   docker build -t rust_control_node:latest -f rust/docker/control_package.Dockerfile .
+   docker build -t rust_orchestrator_dependencies:latest -f rust/docker/orchestrator_dependencies.Dockerfile .
+   docker build -t rust_orchestrator:latest -f rust/docker/orchestrator.Dockerfile .
    ```
 
 ## Deploying with Kubernetes
@@ -202,6 +208,31 @@ This approach allows you to easily customize the number of hosts, sensors per ho
 
 Remember to adjust your Dockerfiles and build processes if you need to make changes to the sensor or control node implementations.
 
+## Development
+
+### Pre-commit Hooks
+
+This project uses pre-commit hooks to ensure code quality and consistency. To set up pre-commit hooks:
+
+1. Install pre-commit:
+
+   ```
+   pip install pre-commit
+   ```
+
+2. Install the git hook scripts:
+
+   ```
+   pre-commit install
+   ```
+
+3. (Optional) Run against all files:
+   ```
+   pre-commit run --all-files
+   ```
+
+The pre-commit configuration can be found in `.pre-commit-config.yaml`.
+
 ## Cleaning Up
 
 To remove the deployment:
@@ -216,7 +247,3 @@ or
 ```
 kubectl delete -f distributed-sensor-network.yaml
 ```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.

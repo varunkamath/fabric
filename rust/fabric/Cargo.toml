@@ -1,21 +1,26 @@
 [package]
 name = "fabric"
-version = "0.1.0"
+version = "0.2.2"
 edition = "2021"
-authors = ["Varun Kamath <varun.kamath@example.com>"]
-description = "A library for building sensor networks with control nodes"
+authors = ["Varun Kamath <varun.kamath@gmail.com>"]
+description = "A library for building networks of autonomous agents"
 license = "MIT"
 
 [dependencies]
 async-trait = "0.1"
-tokio = { version = "1.39", features = ["full"] }
-tokio-util = "0.7"
-rand = "0.8"
-zenoh = "0.11"
+backoff = "0.4"
+flume = "0.11"
+futures = "0.3"
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_yaml = "0.9"
 thiserror = "1.0"
-lazy_static = "1.4.0"
+tokio = { version = "1.39", features = ["full"] }
+tokio-util = "0.7"
+zenoh = "0.11"
+rand = "0.8"
+lazy_static = "1.5.0"
 
 [dev-dependencies]
 tokio = { version = "1.39", features = ["full", "test-util", "rt-multi-thread"] }

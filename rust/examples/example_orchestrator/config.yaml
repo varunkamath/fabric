@@ -1,0 +1,11 @@
+orchestrator:
+  name: quadcopter_orchestrator
+  zenoh_prefix: /quadcopter_swarm
+
+nodes:
+  - name: quadcopter1
+    type: quadcopter
+  - name: quadcopter2
+    type: quadcopter
+  - name: quadcopter3
+    type: quadcopter

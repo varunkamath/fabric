@@ -1,222 +1,57 @@
-use async_trait::async_trait;
-use fabric::error::Result;
-use fabric::node::interface::{NodeConfig, NodeData, NodeFactory, NodeInterface};
+use fabric::error::FabricError;
+use fabric::init_logger;
+use fabric::node::interface::{NodeConfig, NodeData};
 use fabric::node::Node;
-use fabric::orchestrator::{Orchestrator, OrchestratorConfig};
-use fabric::plugins::register_node_type;
+use fabric::orchestrator::Orchestrator;
+use log::{info, LevelFilter};
 use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::time::Duration;
+use tokio::sync::{mpsc, Mutex};
+use tokio::time::{sleep, Duration};
 use tokio_util::sync::CancellationToken;
+use zenoh::config;
 use zenoh::prelude::r#async::*;
+use zenoh::Session;
 
-struct MockNodeFactory;
-
-impl NodeFactory for MockNodeFactory {
-    fn create(&self, config: NodeConfig) -> Box<dyn NodeInterface> {
-        Box::new(MockNode {
-            config,
-            value: Arc::new(Mutex::new(0.0)),
-        })
-    }
+async fn wait_for_node_initialization() {
+    sleep(Duration::from_millis(500)).await;
 }
 
-struct MockNode {
-    config: NodeConfig,
-    value: Arc<Mutex<f64>>,
-}
-
-#[async_trait]
-impl NodeInterface for MockNode {
-    async fn read(&self) -> Result<f64> {
-        Ok(*self.value.lock().await)
-    }
-
-    fn get_config(&self) -> NodeConfig {
-        self.config.clone()
-    }
-
-    fn set_config(&mut self, config: NodeConfig) {
-        self.config = config;
-    }
-
-    fn get_type(&self) -> String {
-        "mock".to_string()
-    }
-
-    async fn handle_event(&mut self, _event: &str, _payload: &str) -> Result<()> {
-        Ok(())
-    }
-}
-
-fn setup_mock_node() {
-    register_node_type("mock", MockNodeFactory);
+async fn create_zenoh_session() -> Arc<Session> {
+    let mut config = config::peer();
+    config.transport.shared_memory.set_enabled(true).unwrap();
+    zenoh::open(config).res().await.unwrap().into_arc()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_node_creation_and_run() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = zenoh::open(config).res().await.unwrap();
+async fn test_node_config_and_run() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
+
+    let mut config = config::peer();
+    config.transport.shared_memory.set_enabled(true).unwrap();
+    let session = zenoh::open(config).res().await.unwrap().into_arc();
+
     let node_config = NodeConfig {
         node_id: "test_node".to_string(),
-        sampling_rate: 5,
-        threshold: 50.0,
-        custom_config: serde_json::json!({"mock_config": {"param1": 100, "param2": "test"}}),
-    };
-
-    let node = Node::new(
-        "test_node".to_string(),
-        "mock".to_string(),
-        node_config,
-        Arc::new(session),
-    )
-    .await
-    .unwrap();
-
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
-    let handle = tokio::spawn(async move {
-        node.run(cancel_clone).await.unwrap();
-    });
-
-    // Allow some time for the node to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    cancel.cancel();
-    handle.await.unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_orchestrator_creation_and_run() {
-    let config = zenoh::config::Config::default();
-    let session = zenoh::open(config).res().await.unwrap();
-
-    let orchestrator = Orchestrator::new("test_orchestrator".to_string(), Arc::new(session))
-        .await
-        .unwrap();
-
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
-    let handle = tokio::spawn(async move {
-        orchestrator.run(cancel_clone).await.unwrap();
-    });
-
-    // Allow some time for the orchestrator to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    cancel.cancel();
-    handle.await.unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_node_config_publication() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = Arc::new(zenoh::open(config).res().await.unwrap());
-
-    let orchestrator = Orchestrator::new("test_orchestrator".to_string(), session.clone())
-        .await
-        .unwrap();
-
-    let node_configs = vec![
-        NodeConfig {
-            node_id: "node1".to_string(),
-            sampling_rate: 5,
-            threshold: 50.0,
-            custom_config: serde_json::json!({"mock_config": {"param1": 100}}),
-        },
-        NodeConfig {
-            node_id: "node2".to_string(),
-            sampling_rate: 10,
-            threshold: 75.0,
-            custom_config: serde_json::json!({"mock_config": {"param1": 200}}),
-        },
-    ];
-
-    for config in &node_configs {
-        orchestrator
-            .publish_node_config(&config.node_id, config)
-            .await
-            .unwrap();
-    }
-
-    let received_data = Arc::new(Mutex::new(Vec::new()));
-
-    for config in &node_configs {
-        let node = Node::new(
-            config.node_id.clone(),
-            "mock".to_string(),
-            config.clone(),
-            session.clone(),
-        )
-        .await
-        .unwrap();
-
-        let cancel = CancellationToken::new();
-        let cancel_clone = cancel.clone();
-        tokio::spawn(async move {
-            node.run(cancel_clone).await.unwrap();
-        });
-
-        let received_data_clone = received_data.clone();
-        let orchestrator_clone = orchestrator.clone();
-        orchestrator_clone
-            .subscribe_to_node(&config.node_id, move |data| {
-                let received_data_clone = received_data_clone.clone();
-                tokio::spawn(async move {
-                    received_data_clone.lock().await.push(data);
-                });
-            })
-            .await
-            .unwrap();
-    }
-
-    // Allow some time for the nodes to publish data
-    tokio::time::sleep(Duration::from_secs(5)).await;
-
-    let received = received_data.lock().await;
-    assert!(
-        received.len() >= 2,
-        "Should receive data from at least 2 nodes"
-    );
-    assert!(
-        received.iter().any(|data| data.node_id == "node1"),
-        "Should receive data from node1"
-    );
-    assert!(
-        received.iter().any(|data| data.node_id == "node2"),
-        "Should receive data from node2"
-    );
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_node_config_update() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = Arc::new(zenoh::open(config).res().await.unwrap());
-
-    let initial_config = NodeConfig {
-        node_id: "test_node".to_string(),
-        sampling_rate: 5,
-        threshold: 50.0,
-        custom_config: serde_json::json!({"mock_config": {"param1": 100}}),
+        config: serde_json::json!({
+            "sampling_rate": 5,
+            "threshold": 50.0,
+            "mock_config": {"param1": 100}
+        }),
     };
 
     let node = Arc::new(
         Node::new(
-            initial_config.node_id.clone(),
-            "mock".to_string(),
-            initial_config.clone(),
+            node_config.node_id.clone(),
+            "generic".to_string(),
+            node_config.clone(),
             session.clone(),
+            None,
         )
-        .await
-        .unwrap(),
+        .await?,
     );
 
-    let orchestrator = Orchestrator::new("test_orchestrator".to_string(), session.clone())
-        .await
-        .unwrap();
+    node.create_publisher("node/test_node/data".to_string())
+        .await?;
 
     let cancel = CancellationToken::new();
     let cancel_clone = cancel.clone();
@@ -225,341 +60,521 @@ async fn test_node_config_update() {
         node_clone.run(cancel_clone).await.unwrap();
     });
 
-    // Allow some time for the node to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    wait_for_node_initialization().await;
 
-    // Update node config
+    let data = node.get_config().await;
+    info!("Read config from node: {:?}", data);
+
     let updated_config = NodeConfig {
         node_id: "test_node".to_string(),
-        sampling_rate: 10,
-        threshold: 75.0,
-        custom_config: serde_json::json!({"mock_config": {"param1": 200}}),
+        config: serde_json::json!({
+            "sampling_rate": 10,
+            "threshold": 75.0,
+            "mock_config": {"param1": 200}
+        }),
     };
 
-    orchestrator
-        .publish_node_config(&updated_config.node_id, &updated_config)
-        .await
-        .unwrap();
+    node.update_config(updated_config.clone()).await?;
 
-    // Allow some time for the config update to be processed
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    wait_for_node_initialization().await;
 
-    let updated_config = node.get_config().await;
-    assert_eq!(updated_config.sampling_rate, 10);
-    assert_eq!(updated_config.threshold, 75.0);
+    let updated_data = node.get_config().await;
+    info!("Read updated config from node: {:?}", updated_data);
 
     cancel.cancel();
+
+    assert_eq!(updated_data, updated_config);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_concurrent_operations() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = Arc::new(zenoh::open(config).res().await.unwrap());
+async fn test_orchestrator_node_communication() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
 
-    let orchestrator = Arc::new(
-        Orchestrator::new("test_orchestrator".to_string(), session.clone())
-            .await
-            .unwrap(),
-    );
+    let mut config = config::peer();
+    config.transport.shared_memory.set_enabled(true).unwrap();
+    let session = zenoh::open(config).res().await.unwrap().into_arc();
 
-    let node_configs = vec![
-        NodeConfig {
-            node_id: "node1".to_string(),
-            sampling_rate: 5,
-            threshold: 50.0,
-            custom_config: serde_json::json!({"mock_config": {"param1": 100}}),
-        },
-        NodeConfig {
-            node_id: "node2".to_string(),
-            sampling_rate: 10,
-            threshold: 75.0,
-            custom_config: serde_json::json!({"mock_config": {"param1": 200}}),
-        },
-    ];
+    let orchestrator = Orchestrator::new("test_orchestrator".to_string(), session.clone()).await?;
 
-    let mut handles = vec![];
-
-    for config in node_configs {
-        let session_clone = session.clone();
-        let orchestrator_clone = orchestrator.clone();
-        handles.push(tokio::spawn(async move {
-            let node = Node::new(
-                config.node_id.clone(),
-                "mock".to_string(),
-                config.clone(),
-                session_clone.clone(),
-            )
-            .await
-            .unwrap();
-
-            let cancel = CancellationToken::new();
-            let cancel_clone = cancel.clone();
-            tokio::spawn(async move {
-                node.run(cancel_clone).await.unwrap();
-            });
-
-            // Publish some data
-            for _ in 0..5 {
-                let data = NodeData {
-                    node_id: config.node_id.clone(),
-                    node_type: "mock".to_string(),
-                    value: rand::random::<f64>() * 100.0,
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                    metadata: None,
-                };
-                session_clone
-                    .put("node/data", serde_json::to_string(&data).unwrap())
-                    .res()
-                    .await
-                    .unwrap();
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-
-            // Update node config
-            let updated_config = NodeConfig {
-                node_id: config.node_id.clone(),
-                sampling_rate: config.sampling_rate * 2,
-                threshold: config.threshold * 1.5,
-                custom_config: config.custom_config.clone(),
-            };
-            orchestrator_clone
-                .publish_node_config(&updated_config.node_id, &updated_config)
-                .await
-                .unwrap();
-
-            cancel.cancel();
-        }));
-    }
-
-    // Wait for all tasks to complete
-    for handle in handles {
-        handle.await.unwrap();
-    }
-
-    // The test passes if no panics occur during concurrent operations
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_orchestrator_node_interaction() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = Arc::new(zenoh::open(config).res().await.unwrap());
-
-    let orchestrator = Arc::new(
-        Orchestrator::new("test_orchestrator".to_string(), session.clone())
-            .await
-            .unwrap(),
-    );
-
-    let node_config = NodeConfig {
-        node_id: "test_node".to_string(),
-        sampling_rate: 5,
-        threshold: 50.0,
-        custom_config: serde_json::json!({"mock_config": {"param1": 100}}),
+    let node1_config = NodeConfig {
+        node_id: "node1".to_string(),
+        config: serde_json::json!({
+            "sampling_rate": 5,
+            "threshold": 50.0,
+            "mock_config": {"param1": 100}
+        }),
     };
 
-    let node = Arc::new(
+    let node2_config = NodeConfig {
+        node_id: "node2".to_string(),
+        config: serde_json::json!({
+            "sampling_rate": 10,
+            "threshold": 75.0,
+            "mock_config": {"param1": 200}
+        }),
+    };
+
+    let node1 = Arc::new(
         Node::new(
-            node_config.node_id.clone(),
-            "mock".to_string(),
-            node_config.clone(),
+            node1_config.node_id.clone(),
+            "generic".to_string(),
+            node1_config.clone(),
             session.clone(),
+            None,
         )
-        .await
-        .unwrap(),
+        .await?,
+    );
+
+    let node2 = Arc::new(
+        Node::new(
+            node2_config.node_id.clone(),
+            "generic".to_string(),
+            node2_config.clone(),
+            session.clone(),
+            None,
+        )
+        .await?,
     );
 
     let cancel = CancellationToken::new();
     let cancel_clone1 = cancel.clone();
     let cancel_clone2 = cancel.clone();
-    let node_clone = node.clone();
-    tokio::spawn(async move {
-        node_clone.run(cancel_clone1).await.unwrap();
-    });
 
-    let orchestrator_clone = orchestrator.clone();
-    let handle = tokio::spawn(async move {
-        orchestrator_clone.run(cancel_clone2).await.unwrap();
-    });
+    let node1_clone = node1.clone();
+    let node2_clone = node2.clone();
 
-    // Allow some time for the node and orchestrator to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    let node1_handle = tokio::spawn(async move { node1_clone.run(cancel_clone1).await });
+    let node2_handle = tokio::spawn(async move { node2_clone.run(cancel_clone2).await });
 
-    // Test node config update
-    let updated_config = NodeConfig {
-        node_id: "test_node".to_string(),
-        sampling_rate: 10,
-        threshold: 75.0,
-        custom_config: serde_json::json!({"mock_config": {"param1": 200}}),
-    };
+    wait_for_node_initialization().await;
 
     orchestrator
-        .publish_node_config(&updated_config.node_id, &updated_config)
-        .await
-        .unwrap();
-
-    // Allow some time for the config update to be processed
-    tokio::time::sleep(Duration::from_secs(2)).await;
-
-    let received_config = node.get_config().await;
-    assert_eq!(received_config.sampling_rate, 10);
-    assert_eq!(received_config.threshold, 75.0);
-
-    // Test node data publication and orchestrator subscription
-    let received_data = Arc::new(Mutex::new(Vec::new()));
-    let received_data_clone = received_data.clone();
-
+        .publish_node_config(&node1_config.node_id, &node1_config)
+        .await?;
     orchestrator
-        .subscribe_to_node(&node_config.node_id, move |data| {
-            let received_data_clone = received_data_clone.clone();
-            tokio::spawn(async move {
-                received_data_clone.lock().await.push(data);
-            });
-        })
-        .await
-        .unwrap();
+        .publish_node_config(&node2_config.node_id, &node2_config)
+        .await?;
 
-    // Simulate node publishing data
-    for _ in 0..5 {
-        let data = NodeData {
-            node_id: node_config.node_id.clone(),
-            node_type: "mock".to_string(),
-            value: rand::random::<f64>() * 100.0,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata: None,
-        };
-        session
-            .put("node/data", serde_json::to_string(&data).unwrap())
-            .res()
-            .await
-            .unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    wait_for_node_initialization().await;
 
-    // Allow some time for the data to be processed
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    let node1_data = node1.get_config().await;
+    let node2_data = node2.get_config().await;
 
-    let received = received_data.lock().await;
-    assert!(received.len() >= 5, "Should receive at least 5 data points");
+    info!("Node 1 data: {:?}", node1_data);
+    info!("Node 2 data: {:?}", node2_data);
 
     cancel.cancel();
-    handle.await.unwrap();
+
+    let _ = tokio::time::timeout(Duration::from_secs(5), node1_handle)
+        .await
+        .map_err(|_| FabricError::Other("Timeout waiting for node1 to finish".into()))?
+        .map_err(|e| FabricError::Other(format!("Node1 join error: {}", e)))?;
+
+    let _ = tokio::time::timeout(Duration::from_secs(5), node2_handle)
+        .await
+        .map_err(|_| FabricError::Other("Timeout waiting for node2 to finish".into()))?
+        .map_err(|e| FabricError::Other(format!("Node2 join error: {}", e)))?;
+
+    Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_orchestrator_config() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = Arc::new(zenoh::open(config).res().await.unwrap());
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_node_failure_and_recovery() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
 
+    let session = create_zenoh_session().await;
     let orchestrator = Arc::new(
-        Orchestrator::new("test_orchestrator".to_string(), session.clone())
-            .await
-            .unwrap(),
+        Orchestrator::new("test_failure_orchestrator".to_string(), session.clone()).await?,
     );
 
-    let node_configs = vec![
-        NodeConfig {
-            node_id: "node1".to_string(),
-            sampling_rate: 5,
-            threshold: 50.0,
-            custom_config: serde_json::json!({"mock_config": {"param1": 100}}),
-        },
-        NodeConfig {
-            node_id: "node2".to_string(),
-            sampling_rate: 10,
-            threshold: 75.0,
-            custom_config: serde_json::json!({"mock_config": {"param1": 200}}),
-        },
-    ];
-
-    let orchestrator_config = OrchestratorConfig {
-        nodes: node_configs.clone(),
-    };
-
-    orchestrator
-        .publish_node_configs(&orchestrator_config)
-        .await
-        .unwrap();
-
-    // Create nodes and verify their configs
-    for config in node_configs {
-        let node = Node::new(
-            config.node_id.clone(),
-            "mock".to_string(),
-            config.clone(),
-            session.clone(),
-        )
-        .await
-        .unwrap();
-
-        // Allow some time for the node to receive the config
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        let received_config = node.get_config().await;
-        assert_eq!(received_config.sampling_rate, config.sampling_rate);
-        assert_eq!(received_config.threshold, config.threshold);
-    }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn test_node_event_handling() {
-    setup_mock_node();
-    let config = zenoh::config::Config::default();
-    let session = Arc::new(zenoh::open(config).res().await.unwrap());
-
     let node_config = NodeConfig {
-        node_id: "test_node".to_string(),
-        sampling_rate: 5,
-        threshold: 50.0,
-        custom_config: serde_json::json!({"mock_config": {"param1": 100}}),
+        node_id: "failing_node".to_string(),
+        config: serde_json::json!({
+            "sampling_rate": 5,
+            "threshold": 50.0,
+            "mock_config": {"param1": 100}
+        }),
     };
 
     let node = Arc::new(
         Node::new(
             node_config.node_id.clone(),
-            "mock".to_string(),
+            "generic".to_string(),
             node_config.clone(),
             session.clone(),
+            None,
         )
-        .await
-        .unwrap(),
+        .await?,
     );
 
-    let cancel = CancellationToken::new();
-    let cancel_clone = cancel.clone();
-    let node_clone = node.clone();
-    tokio::spawn(async move {
-        node_clone.run(cancel_clone).await.unwrap();
+    let orchestrator_cancel = CancellationToken::new();
+    let orchestrator_cancel_clone = orchestrator_cancel.clone();
+    let orchestrator_clone = orchestrator.clone();
+    let orchestrator_handle = tokio::spawn(async move {
+        orchestrator_clone
+            .run(orchestrator_cancel_clone)
+            .await
+            .unwrap();
     });
 
-    // Allow some time for the node to start
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    wait_for_node_initialization().await;
 
-    // Send an event to the node
-    let event = "test_event";
-    let payload = "test_payload";
-    session
-        .put(
-            format!("node/{}/event/{}", node_config.node_id, event),
-            payload,
-        )
-        .res()
+    let node_cancel = CancellationToken::new();
+    let node_cancel_clone = node_cancel.clone();
+    let node_clone = node.clone();
+    let _node_handle = tokio::spawn(async move {
+        node_clone.run(node_cancel_clone).await.unwrap();
+    });
+
+    wait_for_node_initialization().await;
+
+    orchestrator
+        .publish_node_config(&node_config.node_id, &node_config)
+        .await?;
+
+    // Stop node
+    node_cancel.cancel();
+
+    // Wait for the orchestrator to detect the failure
+    sleep(Duration::from_millis(10050)).await;
+
+    // Check if the orchestrator detected the failure
+    {
+        let nodes = orchestrator.nodes.lock().await;
+        let node_state = nodes.get("failing_node").unwrap();
+        assert_eq!(node_state.last_value.status, "offline");
+    }
+
+    // Start node again
+    let node_clone = node.clone();
+    let node_cancel_clone = node_cancel.clone();
+    let node_handle = tokio::spawn(async move {
+        node_clone.run(node_cancel_clone).await.unwrap();
+    });
+
+    // Wait for the orchestrator to detect the recovery
+    sleep(Duration::from_millis(100)).await;
+
+    // Check if the orchestrator detected the recovery
+    {
+        let nodes = orchestrator.nodes.lock().await;
+        let node_state = nodes.get("failing_node").unwrap();
+        assert_eq!(node_state.last_value.status, "online");
+    }
+
+    // Cancel orchestrator and node
+    orchestrator_cancel.cancel();
+    node_cancel.cancel();
+
+    // Wait for tasks to complete with a timeout
+    let _ = tokio::time::timeout(Duration::from_secs(5), orchestrator_handle).await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), node_handle).await;
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn test_orchestrator_callback_functionality() -> Result<(), FabricError> {
+    init_logger(LevelFilter::Info);
+
+    let session = create_zenoh_session().await;
+    let orchestrator = Orchestrator::new("test_orchestrator".to_string(), session.clone()).await?;
+    let (tx, mut rx) = mpsc::channel(100);
+
+    let callback = Arc::new(Mutex::new(move |node_data: NodeData| {
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            tx.send(node_data).await.unwrap();
+        });
+    }));
+
+    orchestrator
+        .register_callback("test_node", callback)
+        .await?;
+
+    // Simulate node data update
+    let node_data = NodeData {
+        node_id: "test_node".to_string(),
+        status: "active".to_string(),
+        node_type: "radio".to_string(),
+        timestamp: 1234567890,
+        metadata: None,
+    };
+    orchestrator.update_node_state(node_data.clone()).await;
+
+    // Check if the callback was triggered
+    let received_data = tokio::time::timeout(Duration::from_secs(5), rx.recv())
         .await
-        .unwrap();
+        .map_err(|_| FabricError::Other("Timeout waiting for callback".into()))?
+        .ok_or_else(|| FabricError::Other("Channel closed".into()))?;
 
-    // Allow some time for the event to be processed
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(received_data.node_id, node_data.node_id);
+    assert_eq!(received_data.status, node_data.status);
 
-    // Note: In the current implementation, we can't easily verify if the event was handled.
-    // You might want to add a mechanism to check if events were received and handled correctly.
+    Ok(())
+}
 
-    cancel.cancel();
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_multi_node_config_application() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
+
+    let session = create_zenoh_session().await;
+    let orchestrator = Arc::new(
+        Orchestrator::new("test_multi_node_orchestrator".to_string(), session.clone()).await?,
+    );
+
+    // Create 4 nodes with initial configurations
+    let node_configs = vec![
+        ("complex_node1", 5, 50.0, 100),
+        ("complex_node2", 10, 75.0, 200),
+        ("complex_node3", 15, 100.0, 300),
+        ("complex_node4", 20, 125.0, 400),
+    ];
+
+    let mut nodes = Vec::new();
+    for (id, sampling_rate, threshold, param1) in node_configs {
+        let config = NodeConfig {
+            node_id: id.to_string(),
+            config: serde_json::json!({
+                "sampling_rate": sampling_rate,
+                "threshold": threshold,
+                "mock_config": {"param1": param1}
+            }),
+        };
+
+        let node = Arc::new(
+            Node::new(
+                config.node_id.clone(),
+                "generic".to_string(),
+                config.clone(),
+                session.clone(),
+                None,
+            )
+            .await?,
+        );
+
+        nodes.push((node, config));
+    }
+
+    // Start the orchestrator
+    let orchestrator_cancel = CancellationToken::new();
+    let orchestrator_cancel_clone = orchestrator_cancel.clone();
+    let orchestrator_clone = orchestrator.clone();
+    let orchestrator_handle = tokio::spawn(async move {
+        orchestrator_clone
+            .run(orchestrator_cancel_clone)
+            .await
+            .unwrap();
+    });
+
+    // Start all nodes
+    let node_cancel = CancellationToken::new();
+    let node_handles: Vec<_> = nodes
+        .iter()
+        .map(|(node, _)| {
+            let node_clone = node.clone();
+            let cancel_clone = node_cancel.clone();
+            tokio::spawn(async move {
+                node_clone.run(cancel_clone).await.unwrap();
+            })
+        })
+        .collect();
+
+    // Wait for initialization
+    wait_for_node_initialization().await;
+
+    // Publish initial configurations
+    for (_, config) in &nodes {
+        orchestrator
+            .publish_node_config(&config.node_id, config)
+            .await?;
+    }
+
+    // Wait for config application
+    wait_for_node_initialization().await;
+
+    // Verify initial configurations
+    for (node, config) in &nodes {
+        let node_config = node.get_config().await;
+        assert_eq!(node_config.node_id, config.node_id);
+        assert_eq!(node_config.config, config.config);
+    }
+
+    // Update configurations
+    for (_node, config) in &mut nodes {
+        let mut new_config = config.clone();
+        let mut json_config: serde_json::Value =
+            serde_json::from_value(config.config.clone()).unwrap();
+        json_config["sampling_rate"] =
+            serde_json::json!(json_config["sampling_rate"].as_i64().unwrap() * 2);
+        json_config["threshold"] =
+            serde_json::json!(json_config["threshold"].as_f64().unwrap() * 1.5);
+        json_config["mock_config"]["param1"] =
+            serde_json::json!(json_config["mock_config"]["param1"].as_i64().unwrap() + 50);
+        new_config.config = json_config;
+
+        orchestrator
+            .publish_node_config(&new_config.node_id, &new_config)
+            .await?;
+
+        *config = new_config;
+    }
+
+    // Wait for config application
+    wait_for_node_initialization().await;
+
+    // Verify updated configurations
+    for (node, config) in &nodes {
+        let node_config = node.get_config().await;
+        println!("Node config: {:?}", node_config);
+        println!("Config: {:?}", config);
+        assert_eq!(node_config.node_id, config.node_id);
+        assert_eq!(node_config.config, config.config);
+
+        // Additional assertions for specific config values
+        let json_config: serde_json::Value = serde_json::from_value(config.config.clone()).unwrap();
+        assert!(json_config["sampling_rate"].as_i64().unwrap() > 5);
+        assert!(json_config["threshold"].as_f64().unwrap() > 50.0);
+        assert!(json_config["mock_config"]["param1"].as_i64().unwrap() > 100);
+    }
+
+    // Cleanup
+    orchestrator_cancel.cancel();
+    node_cancel.cancel();
+
+    // Wait for tasks to complete with a timeout
+    let _ = tokio::time::timeout(Duration::from_secs(5), orchestrator_handle).await;
+    for handle in node_handles {
+        let _ = tokio::time::timeout(Duration::from_secs(5), handle).await;
+    }
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_custom_message_publish_subscribe() -> fabric::Result<()> {
+    init_logger(LevelFilter::Info);
+
+    let session = create_zenoh_session().await;
+    let orchestrator = Arc::new(
+        Orchestrator::new(
+            "test_custom_message_orchestrator".to_string(),
+            session.clone(),
+        )
+        .await?,
+    );
+
+    let node_config = NodeConfig {
+        node_id: "custom_message_node".to_string(),
+        config: serde_json::json!({}),
+    };
+
+    let node = Arc::new(
+        Node::new(
+            node_config.node_id.clone(),
+            "generic".to_string(),
+            node_config.clone(),
+            session.clone(),
+            None,
+        )
+        .await?,
+    );
+
+    // Create a channel to receive messages in the test
+    let (tx, mut rx) = mpsc::channel(100);
+
+    // Declare custom topics
+    let custom_topic = "test_custom_topic";
+    orchestrator
+        .create_subscriber(
+            custom_topic.to_string(),
+            Arc::new(Mutex::new(move |sample: Sample| {
+                let tx = tx.clone();
+                let payload = sample.value.payload.contiguous().to_vec();
+                tokio::spawn(async move {
+                    tx.send(payload).await.unwrap();
+                });
+            })),
+        )
+        .await?;
+    node.create_publisher(custom_topic.to_string()).await?;
+
+    // Start the orchestrator and node
+    let orchestrator_cancel = CancellationToken::new();
+    let node_cancel = CancellationToken::new();
+
+    let orchestrator_clone = orchestrator.clone();
+    let orchestrator_cancel_clone = orchestrator_cancel.clone();
+    let orchestrator_handle = tokio::spawn(async move {
+        orchestrator_clone
+            .run(orchestrator_cancel_clone)
+            .await
+            .unwrap();
+    });
+
+    let node_clone = node.clone();
+    let node_cancel_clone = node_cancel.clone();
+    let node_handle = tokio::spawn(async move {
+        node_clone.run(node_cancel_clone).await.unwrap();
+    });
+
+    // Wait for initialization
+    wait_for_node_initialization().await;
+
+    // Publish a custom message from the node
+    let custom_message = "Hello, Orchestrator!".as_bytes().to_vec();
+    info!("Publishing message: {:?}", custom_message);
+    node.publish(custom_topic, custom_message.clone()).await?;
+
+    // Wait for the message to be received with a timeout
+    info!("Waiting for message...");
+    let received_message = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .map_err(|_| {
+            info!("Timeout occurred while waiting for message");
+            FabricError::Other("Timeout waiting for message".into())
+        })?
+        .ok_or_else(|| FabricError::Other("Channel closed".into()))?;
+
+    info!("Received message: {:?}", received_message);
+
+    // Verify the received message
+    assert_eq!(
+        received_message, custom_message,
+        "Received message does not match sent message"
+    );
+
+    // Publish another message to ensure multiple messages can be sent and received
+    let second_message = "Second message".as_bytes().to_vec();
+    info!("Publishing second message: {:?}", second_message);
+    node.publish(custom_topic, second_message.clone()).await?;
+
+    // Wait for the second message
+    info!("Waiting for second message...");
+    let received_second_message = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        .await
+        .map_err(|_| {
+            info!("Timeout occurred while waiting for second message");
+            FabricError::Other("Timeout waiting for second message".into())
+        })?
+        .ok_or_else(|| FabricError::Other("Channel closed".into()))?;
+
+    info!("Received second message: {:?}", received_second_message);
+
+    // Verify the second received message
+    assert_eq!(
+        received_second_message, second_message,
+        "Received second message does not match sent message"
+    );
+
+    // Cleanup
+    orchestrator_cancel.cancel();
+    node_cancel.cancel();
+
+    // Wait for tasks to complete with a timeout
+    let _ = tokio::time::timeout(Duration::from_secs(5), orchestrator_handle).await;
+    let _ = tokio::time::timeout(Duration::from_secs(5), node_handle).await;
+
+    Ok(())
 }

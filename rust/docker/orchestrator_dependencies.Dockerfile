@@ -18,13 +18,16 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Create a directory for our application
-WORKDIR /app
+WORKDIR /app/example_orchestrator
 
 # Copy our Cargo.toml and Cargo.lock
-COPY rust/sensor_node/Cargo.toml rust/sensor_node/Cargo.lock ./
+COPY rust/examples/example_orchestrator/Cargo.toml Cargo.lock ./
 
 # Create a dummy src/main.rs file
 RUN mkdir src && echo "fn main() {println!(\"Hello, world!\");}" > src/main.rs
+
+# Add local dependency `fabric`
+COPY rust/fabric /fabric
 
 # Build dependencies to ensure they are all downloaded
 RUN cargo build --release
@@ -33,7 +36,7 @@ RUN cargo build --release
 RUN mkdir .cargo
 RUN cargo vendor > .cargo/config.toml
 
-# Remove the dummy src directory and target directory
-RUN rm -rf src target
+# Remove the dummy src directory
+RUN rm -rf src
 
 # The resulting image will have all dependencies downloaded and cached
