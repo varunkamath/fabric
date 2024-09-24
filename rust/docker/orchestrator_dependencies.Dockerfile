@@ -18,13 +18,19 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Create a directory for our application
-WORKDIR /app
+WORKDIR /app/example_orchestrator
 
 # Copy our Cargo.toml and Cargo.lock
-COPY rust/examples/example_orchestrator/Cargo.toml rust/examples/example_orchestrator/Cargo.lock ./
+COPY rust/examples/example_orchestrator/Cargo.toml Cargo.lock ./
 
 # Create a dummy src/main.rs file
 RUN mkdir src && echo "fn main() {println!(\"Hello, world!\");}" > src/main.rs
+
+# Add local dependency `fabric`
+COPY rust/fabric /fabric
+
+# Build dependencies to ensure they are all downloaded
+RUN cargo build --release
 
 # Use cargo vendor to download and cache dependencies
 RUN mkdir .cargo

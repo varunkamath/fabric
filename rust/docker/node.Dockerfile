@@ -7,12 +7,17 @@ FROM rust:1.80.1 AS builder
 # Copy our actual source code
 COPY rust/examples/example_node /app
 
+RUN apt update && apt install -y lld
+
 # Copy the vendored dependencies from the base image
-COPY --from=base-image /app/vendor /app/vendor
-COPY --from=base-image /app/.cargo /app/.cargo
+COPY --from=base-image /app/example_node/vendor /app/example_node/vendor
+COPY --from=base-image /app/example_node/.cargo /app/example_node/.cargo
+
+# Add local dependency `fabric`
+COPY rust/fabric /fabric
 
 # Build our application
-WORKDIR /app
+WORKDIR /app/example_node
 RUN cargo build --release --offline
 
 # Create a new stage for a smaller final image
