@@ -1,14 +1,11 @@
 TODOs for library parity:
 
-1. Implement a similar plugin system in the Python version.
 2. Standardize the configuration and data structures between both versions.
 3. Align the error handling approaches more closely.
 4. Ensure that all features available in one version are also available in the other.
 
 To note:
 
-1. Plugin Management:
-   The plugin system is implemented differently in Rust and Python. Ensure that node types are registered correctly in both languages if you want to use them interchangeably.
 2. Performance Differences:
    Rust nodes might perform better for CPU-intensive tasks, while Python nodes might be easier to prototype and modify quickly.
 3. Deployment Complexity:

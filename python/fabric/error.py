@@ -1,2 +1,0 @@
-class FabricError(Exception):
-    pass
