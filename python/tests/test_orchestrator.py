@@ -15,10 +15,10 @@ def zenoh_session():
 
 
 @pytest.fixture
-def orchestrator(zenoh_session):
+async def orchestrator(zenoh_session):
     orchestrator = Orchestrator("test_orchestrator", zenoh_session)
     yield orchestrator
-    orchestrator.cleanup()  # This is now synchronous
+    await orchestrator.cleanup()  # Change this to await
 
 
 @pytest.mark.asyncio
@@ -80,7 +80,7 @@ async def test_register_callback(orchestrator):
 async def test_publish_with_retry(orchestrator):
     topic = "test_topic"
     data = "test_data"
-    orchestrator.publish_with_retry(topic, data)
+    await orchestrator.publish_with_retry(topic, data)  # Add await here
     # This test just checks if the method runs without errors
     # In a real scenario, you'd want to verify the data was actually published
 

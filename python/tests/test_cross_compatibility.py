@@ -67,4 +67,6 @@ class MockRustNode:
 
     def handle_config_update(self, sample):
         new_config = json.loads(sample.payload.decode())
-        self.config = NodeConfig(node_id=self.node_id, config=new_config["config"])
+        self.config = NodeConfig(
+            node_id=self.node_id, config=new_config
+        )  # Change this line

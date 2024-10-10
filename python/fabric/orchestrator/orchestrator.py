@@ -115,7 +115,9 @@ class Orchestrator:
         try:
             if topic not in self.publishers:
                 self.create_publisher(topic)
-            self.publish_with_retry(topic, json.dumps(config.__dict__))
+            await self.publish_with_retry(
+                topic, json.dumps(config.__dict__)
+            )  # Add await here
             logger.info(f"Published config for node {node_id}")
         except Exception as e:
             logger.error(
@@ -178,8 +180,9 @@ class Orchestrator:
         topic = f"node/{node_id}/events"
         if topic not in self.publishers:
             self.create_publisher(topic)
-        event_data = json.dumps({"event": event, "payload": payload})
-        self.publish_with_retry(topic, event_data)
+        await self.publish_with_retry(
+            topic, json.dumps({"event": event, "payload": payload})
+        )  # Add await here
         logger.info(f"Sent event '{event}' to node {node_id}")
 
     async def process_events(self) -> None:
