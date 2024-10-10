@@ -1,11 +1,14 @@
 import asyncio
 from typing import Dict, Optional, Callable, Any
 from zenoh import Session, Subscriber, Publisher, Sample
-from .interface import NodeInterface, NodeConfig, NodeData
-from ..error import FabricError, PublisherNotFoundError
+from .interface import NodeInterface, NodeConfig
+from ..error import PublisherNotFoundError
+
 
 class Node:
-    def __init__(self, node_id: str, node_type: str, config: NodeConfig, session: Session):
+    def __init__(
+        self, node_id: str, node_type: str, config: NodeConfig, session: Session
+    ):
         self.id = node_id
         self.node_type = node_type
         self.config = config
@@ -22,7 +25,9 @@ class Node:
     async def create_publisher(self, topic: str) -> None:
         self.publishers[topic] = await self.session.declare_publisher(topic)
 
-    async def create_subscriber(self, topic: str, callback: Callable[[Sample], None]) -> None:
+    async def create_subscriber(
+        self, topic: str, callback: Callable[[Sample], None]
+    ) -> None:
         self.subscribers[topic] = await self.session.declare_subscriber(topic, callback)
 
     async def publish(self, topic: str, data: Any) -> None:

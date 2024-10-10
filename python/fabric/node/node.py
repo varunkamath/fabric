@@ -3,14 +3,16 @@ import logging
 from typing import Dict, Optional, Callable, Any
 from zenoh import Session, Subscriber, Publisher, Sample
 from .interface import NodeInterface, NodeConfig, NodeData
-from ..error import FabricError, PublisherNotFoundError
 import time
 import json
 
 logger = logging.getLogger(__name__)
 
+
 class Node:
-    def __init__(self, node_id: str, node_type: str, config: NodeConfig, session: Session):
+    def __init__(
+        self, node_id: str, node_type: str, config: NodeConfig, session: Session
+    ):
         self.id = node_id
         self.node_type = node_type
         self.config = config
@@ -34,7 +36,9 @@ class Node:
     async def initialize(self) -> None:
         try:
             await self.create_publisher(f"node/{self.id}/data")
-            await self.create_subscriber(f"node/{self.id}/config", self.handle_config_update)
+            await self.create_subscriber(
+                f"node/{self.id}/config", self.handle_config_update
+            )
             logger.info(f"Node {self.id} initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing node {self.id}: {e}", exc_info=True)
@@ -52,7 +56,7 @@ class Node:
                     node_type=self.node_type,
                     timestamp=int(time.time()),
                     metadata=None,
-                    status="online"
+                    status="online",
                 )
                 await self.publish(f"node/{self.id}/data", node_data.to_json())
         except Exception as e:
@@ -93,7 +97,9 @@ class Node:
                 await self.interface.set_config(config)
                 logger.info(f"Config updated for node {self.id}")
             except Exception as e:
-                logger.error(f"Error setting config for node {self.id}: {e}", exc_info=True)
+                logger.error(
+                    f"Error setting config for node {self.id}: {e}", exc_info=True
+                )
                 raise
 
     def get_type(self) -> str:
@@ -105,7 +111,10 @@ class Node:
                 await self.interface.handle_event(event, payload)
                 logger.debug(f"Handled event {event} for node {self.id}")
             except Exception as e:
-                logger.error(f"Error handling event {event} for node {self.id}: {e}", exc_info=True)
+                logger.error(
+                    f"Error handling event {event} for node {self.id}: {e}",
+                    exc_info=True,
+                )
                 raise
 
     async def update_config(self, config: NodeConfig) -> None:
@@ -113,16 +122,12 @@ class Node:
 
     async def handle_config_update(self, sample: Sample) -> None:
         try:
-            config_data = sample.payload.decode('utf-8')
+            config_data = sample.payload.decode("utf-8")
             new_config = NodeConfig(**json.loads(config_data))
             await self.update_config(new_config)
             logger.info(f"Config updated for node {self.id}")
         except Exception as e:
-            logger.error(f"Error handling config update for node {self.id}: {e}", exc_info=True)
+            logger.error(
+                f"Error handling config update for node {self.id}: {e}", exc_info=True
+            )
             raise
-
-    def cleanup(self):
-        for publisher in self.publishers.values():
-            publisher.undeclare()
-        for subscriber in self.subscribers.values():
-            subscriber.undeclare()

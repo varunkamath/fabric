@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Dict
 from .interface import NodeInterface, NodeConfig
-from ..error import FabricError
+
 
 class GenericNode(NodeInterface):
     def __init__(self, node_id: str, initial_config: Dict[str, Any]):

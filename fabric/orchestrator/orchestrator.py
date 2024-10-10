@@ -1,13 +1,15 @@
 import asyncio
-from typing import Dict, Callable, Any
+from typing import Dict, Callable
 from zenoh import Session, Subscriber, Publisher, Sample
 from ..node.interface import NodeConfig, NodeData
 from ..error import FabricError
+
 
 class NodeState:
     def __init__(self, node_data: NodeData):
         self.last_value = node_data
         self.last_update = asyncio.get_event_loop().time()
+
 
 class Orchestrator:
     def __init__(self, orchestrator_id: str, session: Session):
@@ -25,7 +27,9 @@ class Orchestrator:
     async def create_publisher(self, topic: str) -> None:
         self.publishers[topic] = await self.session.declare_publisher(topic)
 
-    async def create_subscriber(self, topic: str, callback: Callable[[Sample], None]) -> None:
+    async def create_subscriber(
+        self, topic: str, callback: Callable[[Sample], None]
+    ) -> None:
         self.subscribers[topic] = await self.session.declare_subscriber(topic, callback)
 
     async def publish_node_config(self, node_id: str, config: NodeConfig) -> None:

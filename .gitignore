@@ -37,6 +37,7 @@ node_modules/
 
 # pytest
 .pytest_cache/
+.python-version
 
 # Helper scripts
 build_dependencies.bash

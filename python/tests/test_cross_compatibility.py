@@ -2,8 +2,9 @@ import asyncio
 import pytest
 import zenoh
 from fabric import Orchestrator
-from fabric.node.interface import NodeConfig, NodeData
+from fabric.node.interface import NodeConfig
 import json
+
 
 @pytest.mark.asyncio
 async def test_python_orchestrator_rust_node():
@@ -38,9 +39,10 @@ async def test_python_orchestrator_rust_node():
         # Clean up
         cancel_token.set()
         await asyncio.gather(orchestrator_task, node_task, return_exceptions=True)
-        if hasattr(rust_node, 'subscriber') and rust_node.subscriber:
+        if hasattr(rust_node, "subscriber") and rust_node.subscriber:
             rust_node.subscriber.undeclare()
         session.close()
+
 
 class MockRustNode:
     def __init__(self, node_id: str, session: zenoh.Session):
@@ -50,7 +52,9 @@ class MockRustNode:
         self.subscriber = None
 
     async def run(self, cancel_token: asyncio.Event) -> None:
-        self.subscriber = self.session.declare_subscriber(f"node/{self.node_id}/config", self.handle_config_update)
+        self.subscriber = self.session.declare_subscriber(
+            f"node/{self.node_id}/config", self.handle_config_update
+        )
         try:
             while not cancel_token.is_set():
                 await asyncio.sleep(0.1)
@@ -63,4 +67,4 @@ class MockRustNode:
 
     def handle_config_update(self, sample):
         new_config = json.loads(sample.payload.decode())
-        self.config = NodeConfig(node_id=self.node_id, config=new_config['config'])
+        self.config = NodeConfig(node_id=self.node_id, config=new_config["config"])

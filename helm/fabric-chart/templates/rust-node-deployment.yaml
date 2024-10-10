@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: rust-node
-          image: "{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag | default "latest" }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

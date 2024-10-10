@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 import json
 
+
 @dataclass
 class NodeConfig:
     node_id: str
@@ -10,6 +11,7 @@ class NodeConfig:
 
     def to_json(self) -> str:
         return json.dumps({"node_id": self.node_id, "config": self.config})
+
 
 @dataclass
 class NodeData:
@@ -20,7 +22,7 @@ class NodeData:
     status: str = "online"
 
     @classmethod
-    def from_json(cls, json_str: str) -> 'NodeData':
+    def from_json(cls, json_str: str) -> "NodeData":
         data = json.loads(json_str)
         return cls(**data)
 
@@ -34,6 +36,7 @@ class NodeData:
 
     def set_status(self, status: str) -> None:
         self.status = status
+
 
 class NodeInterface(ABC):
     @abstractmethod

@@ -2,13 +2,15 @@ import asyncio
 import logging
 from zenoh import Config, Session
 from fabric import Orchestrator
-from fabric.node.interface import NodeConfig, NodeData
+from fabric.node.interface import NodeData
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 async def node_data_callback(node_data: NodeData):
     logger.info(f"Received data from node {node_data.node_id}: {node_data.metadata}")
+
 
 async def main():
     config = Config()
@@ -29,7 +31,7 @@ async def main():
     commands = [
         ("take_off", {}),
         ("move_to", {"position": [10.0, 20.0, 30.0]}),
-        ("land", {})
+        ("land", {}),
     ]
 
     for command, payload in commands:
@@ -45,6 +47,7 @@ async def main():
         await orchestrator_task
     finally:
         await session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import time
 from typing import Dict, Any
 from zenoh import Config, Session
 from fabric import Node
@@ -9,17 +10,26 @@ from fabric.node.interface import NodeInterface, NodeConfig, NodeData
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class QuadcopterConfig:
-    def __init__(self, max_altitude: float, max_speed: float, home_position: list[float], battery_threshold: float):
+    def __init__(
+        self,
+        max_altitude: float,
+        max_speed: float,
+        home_position: list[float],
+        battery_threshold: float,
+    ):
         self.max_altitude = max_altitude
         self.max_speed = max_speed
         self.home_position = home_position
         self.battery_threshold = battery_threshold
 
+
 class QuadcopterCommand:
     MOVE_TO = "move_to"
     LAND = "land"
     TAKE_OFF = "take_off"
+
 
 class QuadcopterNode(NodeInterface):
     def __init__(self, node_id: str, initial_config: Dict[str, Any]):
@@ -73,13 +83,14 @@ class QuadcopterNode(NodeInterface):
                 metadata={
                     "altitude": self.altitude,
                     "battery_level": self.battery_level,
-                    "command_mode": self.command_mode
+                    "command_mode": self.command_mode,
                 },
-                status="online"
+                status="online",
             )
 
             await node.publish(f"node/{self.node_id}/data", node_data.to_json())
             await asyncio.sleep(1)
+
 
 async def main():
     config = Config()
@@ -90,7 +101,7 @@ async def main():
             "max_altitude": 100.0,
             "max_speed": 10.0,
             "home_position": [0.0, 0.0, 0.0],
-            "battery_threshold": 20.0
+            "battery_threshold": 20.0,
         }
     }
 
@@ -102,14 +113,14 @@ async def main():
     cancel_token = asyncio.Event()
     try:
         await asyncio.gather(
-            node.run(cancel_token),
-            quadcopter_node.run(node, cancel_token)
+            node.run(cancel_token), quadcopter_node.run(node, cancel_token)
         )
     except KeyboardInterrupt:
         logger.info("Stopping quadcopter node...")
     finally:
         cancel_token.set()
         await session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

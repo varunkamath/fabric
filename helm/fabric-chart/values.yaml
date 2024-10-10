@@ -5,9 +5,10 @@ replicaCount:
   rustOrchestrator: 1
 
 image:
-  repository: your-registry.com
+  registry: ghcr.io
+  repository: varunkamath/fabric
   pullPolicy: IfNotPresent
-  tag: latest
+  tag: "latest"
 
 rustNode:
   resources:

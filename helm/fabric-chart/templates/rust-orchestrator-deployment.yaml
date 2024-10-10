@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: rust-orchestrator
-          image: "{{ .Values.image.repository }}/rust_orchestrator:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_orchestrator:{{ .Values.image.tag | default "latest" }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
