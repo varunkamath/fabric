@@ -2,8 +2,8 @@
 
 ![CI Status](https://github.com/varunkamath/fabric/workflows/CI%20%2F%20CD/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Python Version](https://img.shields.io/badge/python-3.12.5-blue.svg)
-![Rust Version](https://img.shields.io/badge/rust-1.80.1-orange.svg)
+![Python Version](https://img.shields.io/badge/python-3.12.7-blue.svg)
+![Rust Version](https://img.shields.io/badge/rust-1.81.0-orange.svg)
 
 #### Framework Agnostically Bridging Resilient Interconnected Components
 
@@ -18,6 +18,7 @@
 - **Health Monitoring**: Automatic health checks and status updates for all nodes.
 - **Fault Tolerance**: Detects and handles node failures, with automatic offline status updates after 10 seconds of inactivity.
 - **Extensible**: Easily create custom node types by implementing the `NodeInterface` trait.
+- **Cross-Language Compatibility**: Supports both Python and Rust implementations, allowing for mixed-language deployments.
 
 ## Project Structure
 
@@ -30,11 +31,12 @@
     - `example_orchestrator/`: Example of a Rust orchestrator implementation
 - `python/`
   - `fabric/`: Core Python library for the fabric system
-    - `src/`: Source code for the fabric library
-    - `tests/`: Integration tests for the fabric library
+    - `node/`: Node implementation
+    - `orchestrator/`: Orchestrator implementation
+    - `tests/`: Unit and integration tests
   - `examples/`: Example implementations using the fabric library
-    - `example_node/`: Example of a Python node implementation
-    - `example_orchestrator/`: Example of a Python orchestrator implementation
+    - `example_quadcopter_node.py`: Example of a Python node implementation
+- `docker/`: Dockerfiles for building containers
 - `.github/workflows/`: CI/CD configuration
 
 ## Prerequisites
@@ -43,29 +45,18 @@
 - Kubernetes cluster (Minikube for local testing, or a multi-node cluster for distributed setup)
 - kubectl
 - Rust (for Rust components)
-- Python 3.x (for Python components)
+- Python 3.12.7 (for Python components)
+- Helm (for deploying with Kubernetes)
 
 ## Building the Project
 
-1. Build the Rust sensor node:
+1. Build all services:
 
-   ```
-   docker build -t rust_node_dependencies:latest -f rust/docker/node_dependencies.Dockerfile .
-   docker build -t rust_node:latest -f rust/docker/node.Dockerfile .
-   ```
-
-2. Build the Python sensor node:
-
-   ```
-   docker build -t python_node_dependencies:latest -f python/docker/node_dependencies.Dockerfile .
-   docker build -t python_node:latest -f python/docker/node.Dockerfile .
+   ```bash
+   ./build_services.bash
    ```
 
-3. Build the control node:
-   ```
-   docker build -t rust_orchestrator_dependencies:latest -f rust/docker/orchestrator_dependencies.Dockerfile .
-   docker build -t rust_orchestrator:latest -f rust/docker/orchestrator.Dockerfile .
-   ```
+   This script builds Docker images for both Rust and Python components.
 
 ## Deploying with Kubernetes
 
@@ -83,8 +74,6 @@
    eval $(minikube -p minikube docker-env)
    ```
 
-   You may need to rebuild above images here, as pull policy is set to `Never`
-
 3. Apply the local Kubernetes configuration:
 
    ```
@@ -93,7 +82,7 @@
 
 ### Distributed Deployment
 
-1. Ensure your Kubernetes cluster spans across the 4 target hosts.
+1. Ensure your Kubernetes cluster spans across the target hosts.
 
 2. Label your nodes appropriately (host1, host2, host3, host4):
 
@@ -103,10 +92,10 @@
 
    Repeat for each host.
 
-3. Apply the distributed Kubernetes configuration:
+3. Deploy using Helm:
 
    ```
-   kubectl apply -f distributed-sensor-network.yaml
+   helm install fabric ./fabric-chart -f values.yaml
    ```
 
 ## Monitoring and Debugging
@@ -131,82 +120,9 @@
 
 4. Using k9s:
 
-   k9s is a terminal-based UI to interact with your Kubernetes clusters. It's a powerful tool for managing and monitoring your Kubernetes resources.
-
-   To install k9s, follow the instructions on the [official k9s GitHub page](https://github.com/derailed/k9s).
-
-   To use k9s:
-
    ```
    k9s
    ```
-
-   This will open the k9s interface. You can navigate through your resources, view logs, and execute commands directly from this interface.
-
-## Changing Configurations
-
-To change the sensor configurations:
-
-1. Edit the `config.yaml` section in the `local-sensor-network.yaml` file.
-2. Apply the changes:
-   ```
-   kubectl apply -f local-sensor-network.yaml
-   ```
-3. The control node will automatically publish the new configurations to the sensors.
-
-## Custom Local Deployment
-
-To set up a custom local deployment with a specific number of hosts and sensors per host:
-
-1. Edit the `local-sensor-network.yaml` file:
-
-   - Adjust the `replicas` field in the `rust-sensor` and `python-sensor` StatefulSets to set the number of sensors per type.
-   - Add or remove sensor configurations in the `control-node-config` ConfigMap.
-
-2. Create a custom `values.yaml` file for Helm:
-
-   ```yaml
-   hosts:
-     - name: host1
-       sensors:
-         rust: 2
-         python: 2
-     - name: host2
-       sensors:
-         rust: 3
-         python: 1
-     # Add more hosts as needed
-
-   controlNode:
-     replicas: 1
-
-   sensorConfig:
-     rust-sensor-0:
-       sampling_rate: 5
-       threshold: 50.0
-     rust-sensor-1:
-       sampling_rate: 10
-       threshold: 75.0
-     # Add more sensor configurations as needed
-   ```
-
-3. Create a Helm chart:
-
-   ```
-   helm create fabric-chart
-   ```
-
-4. Replace the contents of `fabric-chart/templates/deployment.yaml` with your modified `local-sensor-network.yaml`, using Helm templating syntax to make it dynamic based on the `values.yaml`.
-
-5. Deploy your custom configuration:
-
-   ```
-   helm install fabric ./fabric-chart -f values.yaml
-   ```
-
-This approach allows you to easily customize the number of hosts, sensors per host, and their configurations using a single `values.yaml` file.
-
-Remember to adjust your Dockerfiles and build processes if you need to make changes to the sensor or control node implementations.
 
 ## Development
 
@@ -226,24 +142,21 @@ This project uses pre-commit hooks to ensure code quality and consistency. To se
    pre-commit install
    ```
 
-3. (Optional) Run against all files:
-   ```
-   pre-commit run --all-files
-   ```
+### Running Tests
 
-The pre-commit configuration can be found in `.pre-commit-config.yaml`.
+To run the Python tests:
 
-## Cleaning Up
-
-To remove the deployment:
-
-```
-kubectl delete -f local-sensor-network.yaml
-minikube stop
+```bash
+pytest
 ```
 
-or
+To run the Rust tests:
 
+```bash
+cd rust/fabric
+cargo test
 ```
-kubectl delete -f distributed-sensor-network.yaml
-```
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
