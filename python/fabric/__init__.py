@@ -1,15 +1,15 @@
-from .node import Node
+from .node.node import Node
+from .node.generic import GenericNode
 from .node.interface import NodeConfig, NodeData, NodeInterface
-from .orchestrator import Orchestrator
-from .plugins import NodeRegistry
+from .orchestrator.orchestrator import Orchestrator
 from .error import FabricError
 
 __all__ = [
     "Node",
+    "GenericNode",
     "NodeConfig",
     "NodeData",
     "NodeInterface",
     "Orchestrator",
-    "NodeRegistry",
     "FabricError",
 ]

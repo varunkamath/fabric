@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabric-chart.fullname" . }}-rust-node
+  labels:
+    {{- include "fabric-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rust-node
+spec:
+  replicas: {{ .Values.replicaCount.rustNode }}
+  selector:
+    matchLabels:
+      {{- include "fabric-chart.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: rust-node
+  template:
+    metadata:
+      labels:
+        {{- include "fabric-chart.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: rust-node
+    spec:
+      containers:
+        - name: rust-node
+          image: "{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 7447
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.rustNode.resources | nindent 12 }}

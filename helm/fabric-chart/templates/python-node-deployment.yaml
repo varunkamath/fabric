@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabric-chart.fullname" . }}-python-node
+  labels:
+    {{- include "fabric-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: python-node
+spec:
+  replicas: {{ .Values.replicaCount.pythonNode }}
+  selector:
+    matchLabels:
+      {{- include "fabric-chart.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: python-node
+  template:
+    metadata:
+      labels:
+        {{- include "fabric-chart.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: python-node
+    spec:
+      containers:
+        - name: python-node
+          image: "{{ .Values.image.repository }}/python_node:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 7447
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.pythonNode.resources | nindent 12 }}

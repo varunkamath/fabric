@@ -1,11 +1,14 @@
 # Use the dependencies image as the base
-FROM python_control_node_dependencies:latest
+FROM ghcr.io/varunkamath/fabric/python_orchestrator_dependencies:latest
 
-# Copy our actual source code
-COPY python/control_node /app
+# Set the working directory in the container
+WORKDIR /app
 
-# Copy the config file
-COPY python/control_node/config.yaml /app/config.yaml
+# Copy the current directory contents into the container at /app
+COPY ./python /app
 
-# Set the entrypoint to our application
-ENTRYPOINT ["python3", "/app/main.py"]
+# Make port 7447 available to the world outside this container
+EXPOSE 7447
+
+# Run the orchestrator when the container launches
+CMD ["python", "-m", "fabric.orchestrator.orchestrator"]

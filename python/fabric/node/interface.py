@@ -1,42 +1,47 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
-
+import json
 
 @dataclass
 class NodeConfig:
     node_id: str
-    sampling_rate: int
-    threshold: float
-    custom_config: Dict[str, Any]
+    config: Dict[str, Any]
 
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "NodeConfig":
-        return cls(**data)
-
+    def to_json(self) -> str:
+        return json.dumps({"node_id": self.node_id, "config": self.config})
 
 @dataclass
 class NodeData:
     node_id: str
-    interface_type: str
-    value: float
+    node_type: str
     timestamp: int
-    metadata: Optional[Dict[str, Any]] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+    metadata: Optional[Dict[str, Any]]
+    status: str = "online"
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "NodeData":
+    def from_json(cls, json_str: str) -> 'NodeData':
+        data = json.loads(json_str)
         return cls(**data)
 
+    def to_json(self) -> str:
+        return json.dumps(self.__dict__)
+
+    def get(self, key: str) -> str:
+        if self.metadata and key in self.metadata:
+            return str(self.metadata[key])
+        raise KeyError(f"Key '{key}' not found in metadata")
+
+    def set_status(self, status: str) -> None:
+        self.status = status
 
 class NodeInterface(ABC):
     @abstractmethod
-    async def read(self) -> float:
+    def get_config(self) -> NodeConfig:
+        pass
+
+    @abstractmethod
+    async def set_config(self, config: NodeConfig) -> None:
         pass
 
     @abstractmethod
@@ -44,13 +49,9 @@ class NodeInterface(ABC):
         pass
 
     @abstractmethod
-    def set_config(self, config: NodeConfig):
+    async def handle_event(self, event: str, payload: str) -> None:
         pass
 
     @abstractmethod
-    def get_config(self) -> NodeConfig:
-        pass
-
-    @abstractmethod
-    async def handle_event(self, event: str, payload: str):
+    async def update_config(self, config: NodeConfig) -> None:
         pass

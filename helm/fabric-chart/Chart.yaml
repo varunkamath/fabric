@@ -1,0 +1,6 @@
+apiVersion: v2
+name: fabric-chart
+description: A Helm chart for deploying the Fabric system with mixed Python and Rust nodes and a Rust orchestrator
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

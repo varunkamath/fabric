@@ -25,10 +25,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Create a directory for our application
 WORKDIR /app
 
-# Copy our requirements file
-COPY python/sensor_node/requirements.txt .
+# Copy our pyproject.toml and poetry.lock files
+COPY python/pyproject.toml python/poetry.lock ./
 
 # Install Python dependencies
-RUN uv pip install --no-cache-dir -r requirements.txt
+RUN uv pip install --no-cache-dir poetry
+RUN poetry config virtualenvs.create false
+RUN poetry install --no-dev
 
 # The resulting image will have all dependencies installed

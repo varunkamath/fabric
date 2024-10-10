@@ -1,5 +1,5 @@
 # Use the dependencies image as the base
-FROM rust_node_dependencies:latest AS base-image
+FROM ghcr.io/varunkamath/fabric/rust_node_dependencies:latest AS base-image
 
 # Use the rust image as the builder
 FROM rust:1.80.1 AS builder
