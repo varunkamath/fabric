@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fabric"
-version = "0.1.0"
+version = "0.2.0"
 description = "A Python library for the fabric system"
 authors = ["Your Name <your.email@example.com>"]
 license = "MIT"

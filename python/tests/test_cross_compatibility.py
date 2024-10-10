@@ -1,7 +1,7 @@
 import asyncio
 import pytest
 import zenoh
-from fabric import Orchestrator
+from fabric.orchestrator.orchestrator import Orchestrator
 from fabric.node.interface import NodeConfig
 import json
 
