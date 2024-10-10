@@ -1,0 +1,6 @@
+ruff
+pytest
+pytest-asyncio
+eclipse-zenoh==0.11.0
+backoff==2.2.1
+-e .

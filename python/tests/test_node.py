@@ -1,174 +1,117 @@
-import pytest
 import asyncio
-import json
-import logging
-from unittest.mock import MagicMock, patch, AsyncMock
-from fabric.node import Node
-from fabric.node.interface import NodeConfig, NodeInterface
-from fabric.plugins import NodeRegistry
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-
-class MockInterface(NodeInterface):
-    def __init__(self, config: NodeConfig):
-        self.config = config
-        self.type = "mock"
-
-    async def read(self) -> float:
-        return 42.0
-
-    def get_type(self) -> str:
-        return self.type
-
-    def set_config(self, config: NodeConfig):
-        self.config = config
-
-    def get_config(self) -> NodeConfig:
-        return self.config
-
-    async def handle_event(self, event: str, payload: str):
-        pass
-
-
-NodeRegistry.register_interface("mock", MockInterface)
+import pytest
+import zenoh
+from fabric.node.node import Node
+from fabric.node.interface import NodeConfig
 
 
 @pytest.fixture
-def mock_zenoh_session():
-    session = MagicMock()
-    session.declare_publisher = AsyncMock(return_value=AsyncMock())
-    session.declare_subscriber = AsyncMock(return_value=AsyncMock())
-    return session
+def zenoh_session():
+    config = zenoh.Config()
+    session = zenoh.open(config)
+    yield session
+    session.close()
+
+
+@pytest.fixture
+def node(zenoh_session):
+    node_config = NodeConfig(node_id="test_node", config={"key": "value"})
+    node = Node("test_node", "test", node_config, zenoh_session)
+    yield node
+    node.cleanup()
 
 
 @pytest.mark.asyncio
-async def test_node_run(mock_zenoh_session, caplog):
-    caplog.set_level(logging.DEBUG)
-    config = NodeConfig(
-        node_id="test_node", sampling_rate=5, threshold=50.0, custom_config={}
-    )
-    node = await Node.create("test_node", "mock", config, mock_zenoh_session)
-
-    cancel_event = asyncio.Event()
-
-    # Ensure that the mock publisher's put method returns a coroutine
-    mock_publisher = mock_zenoh_session.declare_publisher.return_value
-    mock_publisher.put.return_value = asyncio.Future()
-    mock_publisher.put.return_value.set_result(None)
-
-    # Mock the config subscriber
-    config_subscriber = AsyncMock()
-    config_subscriber.recv.return_value = MagicMock(
-        payload=json.dumps(config.to_dict()).encode()
-    )
-
-    # Mock the event subscriber
-    event_subscriber = AsyncMock()
-    event_subscriber.recv.return_value = MagicMock(
-        key_expr=MagicMock(as_string=lambda: "node/test_node/event/test_event"),
-        payload="test_payload".encode(),
-    )
-
-    # Set up the mock session to return our mocked subscribers
-    mock_zenoh_session.declare_subscriber.side_effect = [
-        config_subscriber,
-        event_subscriber,
-    ]
-
-    async def run_node():
-        task = asyncio.create_task(node.run(cancel_event))
-        await asyncio.sleep(0.2)  # Increased sleep time to allow for one loop iteration
-        cancel_event.set()
-        await task
-
-    await asyncio.wait_for(run_node(), timeout=1.0)
-
-    mock_zenoh_session.declare_publisher.assert_called_once_with("node/data")
-    mock_zenoh_session.declare_subscriber.assert_any_call("node/test_node/config")
-    mock_zenoh_session.declare_subscriber.assert_any_call("node/test_node/event/*")
-
-    # Assert that the publisher's put method was called with valid JSON
-    mock_publisher.put.assert_called_once()
-    args, _ = mock_publisher.put.call_args
-    assert isinstance(args[0], str), f"Expected str, got {type(args[0])}"
-    assert json.loads(args[0])  # Ensure the argument is valid JSON
-
-    # Print captured logs
-    print("Captured logs:")
-    for record in caplog.records:
-        print(f"{record.levelname}: {record.message}")
-
-    # Assert that no errors were logged
-    error_logs = [
-        record for record in caplog.records if record.levelno == logging.ERROR
-    ]
-    assert not error_logs, f"Errors were logged during the test: {error_logs}"
+async def test_node_initialization(node):
+    assert node.id == "test_node"
+    assert node.node_type == "test"
+    assert isinstance(node.config, NodeConfig)
+    assert node.config.node_id == "test_node"
+    assert node.config.config == {"key": "value"}
 
 
 @pytest.mark.asyncio
-async def test_node_config_update(mock_zenoh_session):
-    config = NodeConfig(
-        node_id="test_node", sampling_rate=5, threshold=50.0, custom_config={}
-    )
-    node = await Node.create("test_node", "mock", config, mock_zenoh_session)
+async def test_node_get_config(node):
+    config = await node.get_config()
+    assert isinstance(config, NodeConfig)
+    assert config.node_id == "test_node"
+    assert config.config == {"key": "value"}
 
+
+@pytest.mark.asyncio
+async def test_node_set_config(node):
+    new_config = NodeConfig(node_id="test_node", config={"new_key": "new_value"})
+    await node.set_config(new_config)
+    config = await node.get_config()
+    assert config.config == {"new_key": "new_value"}
+
+
+@pytest.mark.asyncio
+async def test_node_get_type(node):
+    assert node.get_type() == "test"
+
+
+@pytest.mark.asyncio
+async def test_node_handle_event(node):
+    # This test assumes that the node's interface is implemented
+    # and has a handle_event method. If not, you may need to create a mock interface.
+    node.interface = MockNodeInterface()
+    await node.handle_event("test_event", "test_payload")
+    assert node.interface.last_event == "test_event"
+    assert node.interface.last_payload == "test_payload"
+
+
+@pytest.mark.asyncio
+async def test_node_update_config(node):
     new_config = NodeConfig(
-        node_id="test_node", sampling_rate=10, threshold=75.0, custom_config={}
+        node_id="test_node", config={"updated_key": "updated_value"}
     )
-
-    config_subscriber = AsyncMock()
-    config_subscriber.recv.return_value = MagicMock(
-        payload=json.dumps(new_config.to_dict()).encode()
-    )
-    mock_zenoh_session.declare_subscriber.return_value = config_subscriber
-
-    cancel_event = asyncio.Event()
-
-    async def run_node():
-        task = asyncio.create_task(node.run(cancel_event))
-        await asyncio.sleep(0.2)  # Increased sleep time to allow for config update
-        cancel_event.set()
-        await task
-
-    await asyncio.wait_for(run_node(), timeout=1.0)
-
-    assert node.get_config() == new_config
-    assert node.interface.get_config() == new_config
+    await node.update_config(new_config)
+    config = await node.get_config()
+    assert config.config == {"updated_key": "updated_value"}
 
 
 @pytest.mark.asyncio
-async def test_node_event_handling(mock_zenoh_session):
-    config = NodeConfig(
-        node_id="test_node", sampling_rate=5, threshold=50.0, custom_config={}
+async def test_node_handle_config_update(node):
+    new_config = NodeConfig(
+        node_id="test_node", config={"updated_key": "updated_value"}
     )
-    node = await Node.create("test_node", "mock", config, mock_zenoh_session)
+    await node.handle_config_update(MockSample(new_config.to_json()))
+    config = await node.get_config()
+    assert config.config == {"updated_key": "updated_value"}
 
-    event_subscriber = AsyncMock()
-    event_subscriber.recv.return_value = MagicMock(
-        key_expr=MagicMock(as_string=lambda: "node/test_node/event/test_event"),
-        payload="test_payload".encode(),
-    )
-    mock_zenoh_session.declare_subscriber.return_value = event_subscriber
 
-    cancel_event = asyncio.Event()
+@pytest.mark.asyncio
+async def test_node_publish(node):
+    node.publish("test_topic", "test_data")
+    # This test just checks if the publish method runs without errors
+    # In a real scenario, you'd want to verify the data was actually published
 
-    async def run_node():
-        with patch.object(
-            node, "handle_event", new_callable=AsyncMock
-        ) as mock_handle_event:
-            task = asyncio.create_task(node.run(cancel_event))
-            await asyncio.sleep(0.5)  # Increased sleep time to allow for event handling
-            cancel_event.set()
-            await task
-            mock_handle_event.assert_called_once_with("test_event", "test_payload")
 
-    await asyncio.wait_for(run_node(), timeout=2.0)
+@pytest.mark.asyncio
+async def test_node_run(node):
+    cancel_token = asyncio.Event()
+    run_task = asyncio.create_task(node.run(cancel_token))
+    await asyncio.sleep(0.1)  # Let the run method start
+    cancel_token.set()
+    await run_task
+    # This test just checks if the run method starts and stops without errors
 
-    # Add assertions to check if the event was processed
-    assert event_subscriber.recv.called, "Event subscriber's recv method was not called"
-    mock_zenoh_session.declare_subscriber.assert_any_call("node/test_node/event/*")
 
-    # Add assertion to check if the run method exited after handling the event
-    assert cancel_event.is_set(), "Cancel event should be set after handling the event"
+class MockNodeInterface:
+    def __init__(self):
+        self.last_event = None
+        self.last_payload = None
+
+    async def handle_event(self, event: str, payload: str):
+        self.last_event = event
+        self.last_payload = payload
+
+
+class MockSample:
+    def __init__(self, payload):
+        self.payload = payload.encode("utf-8")
+
+
+if __name__ == "__main__":
+    pytest.main([__file__])

@@ -1,128 +1,133 @@
 import asyncio
-import json
-import time
 import logging
-import traceback
-import zenoh
-from .interface import NodeConfig, NodeData
-from fabric.plugins import NodeRegistry
+from typing import Dict, Optional, Callable, Any
+from zenoh import Session, Subscriber, Publisher, Sample
+from .interface import NodeInterface, NodeConfig, NodeData
+import time
+import json
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
 class Node:
     def __init__(
-        self, id: str, interface_type: str, config: NodeConfig, session: zenoh.Session
+        self, node_id: str, node_type: str, config: NodeConfig, session: Session
     ):
-        self.id = id
-        self.interface = NodeRegistry.create_interface(interface_type, config)
-        self.session = session
+        self.id = node_id
+        self.node_type = node_type
         self.config = config
+        self.session = session
+        self.interface: Optional[NodeInterface] = None
+        self.publishers: Dict[str, Publisher] = {}
+        self.subscribers: Dict[str, Subscriber] = {}
 
-    @classmethod
-    async def create(
-        cls, id: str, interface_type: str, config: NodeConfig, session: zenoh.Session
-    ):
-        return cls(id, interface_type, config, session)
-
-    async def run(self, cancel_event: asyncio.Event):
-        logger.debug(f"Node {self.id} starting run method")
+    async def run(self, cancel_token: asyncio.Event) -> None:
         try:
-            publisher = await self.session.declare_publisher("node/data")
-            config_subscriber = await self.session.declare_subscriber(
-                f"node/{self.id}/config"
-            )
-            event_subscriber = await self.session.declare_subscriber(
-                f"node/{self.id}/event/*"
-            )
-
-            while not cancel_event.is_set():
-                logger.debug(f"Node {self.id} running main loop")
-                try:
-                    value = await self.interface.read()
-                    logger.debug(f"Node {self.id} read value: {value}")
-                    data = NodeData(
-                        node_id=self.id,
-                        interface_type=self.interface.get_type(),
-                        value=value,
-                        timestamp=int(time.time()),
-                        metadata=None,
-                    )
-                    json_data = json.dumps(data.to_dict())
-                    logger.debug(f"Node {self.id} publishing data: {json_data}")
-                    put_result = publisher.put(json_data)
-                    if asyncio.iscoroutine(put_result):
-                        await put_result
-                except Exception as e:
-                    logger.error(
-                        f"Error reading or publishing data for node {self.id}: {str(e)}"
-                    )
-                    logger.error(traceback.format_exc())
-
-                try:
-                    config_sample = await asyncio.wait_for(
-                        config_subscriber.recv(), timeout=0.1
-                    )
-                    if config_sample:
-                        payload = config_sample.payload
-                        if asyncio.iscoroutine(payload):
-                            payload = await payload
-                        if isinstance(payload, bytes):
-                            payload = payload.decode()
-                        new_config = NodeConfig(**json.loads(payload))
-                        self.interface.set_config(new_config)
-                        self.config = new_config  # Update the node's config as well
-                        logger.debug(f"Node {self.id} updated config: {new_config}")
-                except asyncio.TimeoutError:
-                    pass
-                except json.JSONDecodeError as e:
-                    logger.error(f"Error decoding config for node {self.id}: {str(e)}")
-                    logger.error(traceback.format_exc())
-                except Exception as e:
-                    logger.error(
-                        f"Error processing config for node {self.id}: {str(e)}"
-                    )
-                    logger.error(traceback.format_exc())
-
-                try:
-                    event_sample = await asyncio.wait_for(
-                        event_subscriber.recv(), timeout=0.1
-                    )
-                    if event_sample:
-                        key_expr = event_sample.key_expr
-                        if asyncio.iscoroutine(key_expr):
-                            key_expr = await key_expr
-                        event = key_expr.as_string().split("/")[-1]
-                        payload = event_sample.payload
-                        if asyncio.iscoroutine(payload):
-                            payload = await payload
-                        if isinstance(payload, bytes):
-                            payload = payload.decode()
-                        logger.debug(
-                            f"Node {self.id} received event: {event}, payload: {payload}"
-                        )
-                        await self.handle_event(event, payload)
-                        break  # Exit the loop after handling the event
-                except asyncio.TimeoutError:
-                    pass
-                except Exception as e:
-                    logger.error(f"Error processing event in node {self.id}: {str(e)}")
-                    logger.error(traceback.format_exc())
-
-                await asyncio.sleep(1 / self.config.sampling_rate)
-
-        except KeyboardInterrupt:
-            logger.info(f"Node {self.id} received KeyboardInterrupt, shutting down")
+            await self.initialize()
+            while not cancel_token.is_set():
+                await self.process_messages()
+                await self.update_state()
+                await asyncio.sleep(0.1)  # Adjust sleep time as needed
         except Exception as e:
-            logger.error(f"Error in node {self.id}: {str(e)}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error in node {self.id}: {e}", exc_info=True)
         finally:
-            logger.debug(f"Node {self.id} exiting run method")
+            self.cleanup()  # Note: This is now synchronous
 
-    def get_config(self) -> NodeConfig:
+    async def initialize(self) -> None:
+        try:
+            await self.create_publisher(f"node/{self.id}/data")
+            await self.create_subscriber(
+                f"node/{self.id}/config", self.handle_config_update
+            )
+            logger.info(f"Node {self.id} initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing node {self.id}: {e}", exc_info=True)
+            raise
+
+    async def process_messages(self) -> None:
+        # This method will be called in the run loop to process any pending messages
+        pass
+
+    async def update_state(self) -> None:
+        try:
+            if self.interface:
+                node_data = NodeData(
+                    node_id=self.id,
+                    node_type=self.node_type,
+                    timestamp=int(time.time()),
+                    metadata=None,
+                    status="online",
+                )
+                await self.publish(f"node/{self.id}/data", node_data.to_json())
+        except Exception as e:
+            logger.error(f"Error updating state for node {self.id}: {e}", exc_info=True)
+
+    def cleanup(self) -> None:
+        try:
+            for publisher in self.publishers.values():
+                publisher.undeclare()
+            for subscriber in self.subscribers.values():
+                subscriber.undeclare()
+            logger.info(f"Node {self.id} cleaned up successfully")
+        except Exception as e:
+            logger.error(f"Error during cleanup for node {self.id}: {e}", exc_info=True)
+
+    def create_publisher(self, topic: str) -> None:
+        self.publishers[topic] = self.session.declare_publisher(topic)
+
+    def create_subscriber(self, topic: str, callback: Callable[[Sample], None]) -> None:
+        self.subscribers[topic] = self.session.declare_subscriber(topic, callback)
+
+    def publish(self, topic: str, data: Any) -> None:
+        if topic not in self.publishers:
+            self.create_publisher(topic)
+        try:
+            self.publishers[topic].put(data)
+        except Exception as e:
+            logger.error(f"Error publishing to topic {topic}: {e}", exc_info=True)
+            raise
+
+    async def get_config(self) -> NodeConfig:
         return self.config
 
-    async def handle_event(self, event: str, payload: str):
-        logger.debug(f"Node {self.id} handling event: {event}, payload: {payload}")
-        await self.interface.handle_event(event, payload)
+    async def set_config(self, config: NodeConfig) -> None:
+        self.config = config
+        if self.interface:
+            try:
+                await self.interface.set_config(config)
+                logger.info(f"Config updated for node {self.id}")
+            except Exception as e:
+                logger.error(
+                    f"Error setting config for node {self.id}: {e}", exc_info=True
+                )
+                raise
+
+    def get_type(self) -> str:
+        return self.node_type
+
+    async def handle_event(self, event: str, payload: str) -> None:
+        if self.interface:
+            try:
+                await self.interface.handle_event(event, payload)
+                logger.debug(f"Handled event {event} for node {self.id}")
+            except Exception as e:
+                logger.error(
+                    f"Error handling event {event} for node {self.id}: {e}",
+                    exc_info=True,
+                )
+                raise
+
+    async def update_config(self, config: NodeConfig) -> None:
+        await self.set_config(config)
+
+    async def handle_config_update(self, sample: Sample) -> None:
+        try:
+            config_data = sample.payload.decode("utf-8")
+            new_config = NodeConfig(**json.loads(config_data))
+            await self.update_config(new_config)
+            logger.info(f"Config updated for node {self.id}")
+        except Exception as e:
+            logger.error(
+                f"Error handling config update for node {self.id}: {e}", exc_info=True
+            )
+            raise

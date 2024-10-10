@@ -9,9 +9,6 @@ class NodeConfig:
     node_id: str
     config: Dict[str, Any]
 
-    def to_json(self) -> str:
-        return json.dumps({"node_id": self.node_id, "config": self.config})
-
 
 @dataclass
 class NodeData:

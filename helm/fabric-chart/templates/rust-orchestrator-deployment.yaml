@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabric-chart.fullname" . }}-rust-orchestrator
+  labels:
+    {{- include "fabric-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rust-orchestrator
+spec:
+  replicas: {{ .Values.replicaCount.rustOrchestrator }}
+  selector:
+    matchLabels:
+      {{- include "fabric-chart.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: rust-orchestrator
+  template:
+    metadata:
+      labels:
+        {{- include "fabric-chart.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: rust-orchestrator
+    spec:
+      containers:
+        - name: rust-orchestrator
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_orchestrator:{{ .Values.image.tag | default "latest" }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 7447
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.rustOrchestrator.resources | nindent 12 }}

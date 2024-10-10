@@ -1,0 +1,51 @@
+# Default values for fabric-chart
+replicaCount:
+  rustNode: 2
+  pythonNode: 2
+  rustOrchestrator: 1
+
+image:
+  registry: ghcr.io
+  repository: varunkamath/fabric
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+rustNode:
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+pythonNode:
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+rustOrchestrator:
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+service:
+  type: ClusterIP
+  port: 7447
+
+ingress:
+  enabled: false
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

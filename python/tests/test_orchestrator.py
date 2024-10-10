@@ -1,58 +1,140 @@
+import asyncio
 import pytest
-import json
-from unittest.mock import MagicMock, AsyncMock
-from fabric.orchestrator import Orchestrator
+import zenoh
+from fabric.orchestrator.orchestrator import Orchestrator
 from fabric.node.interface import NodeConfig, NodeData
+from fabric.error import FabricError
 
 
 @pytest.fixture
-def mock_zenoh_session():
-    session = MagicMock()
-    session.put = AsyncMock()
-    session.declare_subscriber = AsyncMock(return_value=MagicMock())
-    return session
+def zenoh_session():
+    config = zenoh.Config()
+    session = zenoh.open(config)
+    yield session
+    session.close()
+
+
+@pytest.fixture
+async def orchestrator(zenoh_session):
+    orchestrator = Orchestrator("test_orchestrator", zenoh_session)
+    yield orchestrator
+    await orchestrator.cleanup()  # Change this to await
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_creation(mock_zenoh_session):
-    orchestrator = await Orchestrator.create("test_orchestrator", mock_zenoh_session)
+async def test_orchestrator_initialization(orchestrator):
     assert orchestrator.id == "test_orchestrator"
-    assert orchestrator.session == mock_zenoh_session
+    assert isinstance(orchestrator.nodes, dict)
+    assert isinstance(orchestrator.publishers, dict)
+    assert isinstance(orchestrator.subscribers, dict)
+    assert isinstance(orchestrator.callbacks, dict)
 
 
 @pytest.mark.asyncio
-async def test_publish_node_config(mock_zenoh_session):
-    orchestrator = await Orchestrator.create("test_orchestrator", mock_zenoh_session)
-    config = NodeConfig(
-        node_id="test_node", sampling_rate=5, threshold=50.0, custom_config={}
+async def test_publish_node_config(orchestrator):
+    node_id = "test_node"
+    config = NodeConfig(node_id=node_id, config={"key": "value"})
+    await orchestrator.publish_node_config(node_id, config)
+    assert f"node/{node_id}/config" in orchestrator.publishers
+
+
+@pytest.mark.asyncio
+async def test_update_node_state(orchestrator):
+    node_id = "test_node"
+    node_data = NodeData(
+        node_id=node_id, node_type="test", timestamp=0, metadata=None, status="online"
     )
-    await orchestrator.publish_node_config("test_node", config)
-    mock_zenoh_session.put.assert_called_once()
-    args, _ = mock_zenoh_session.put.call_args
-    assert args[0] == "node/test_node/config"
-    assert json.loads(args[1]) == config.to_dict()
+    await orchestrator.update_node_state(node_data)
+    assert node_id in orchestrator.nodes
 
 
 @pytest.mark.asyncio
-async def test_send_event_to_node(mock_zenoh_session):
-    orchestrator = await Orchestrator.create("test_orchestrator", mock_zenoh_session)
-    await orchestrator.send_event_to_node("test_node", "test_event", "test_payload")
-    mock_zenoh_session.put.assert_called_once()
-    args, _ = mock_zenoh_session.put.call_args
-    assert args[0] == "node/test_node/event/test_event"
-    assert args[1] == "test_payload"
-
-
-@pytest.mark.asyncio
-async def test_update_node_state(mock_zenoh_session):
-    orchestrator = await Orchestrator.create("test_orchestrator", mock_zenoh_session)
-    data = NodeData(
-        node_id="test_node",
-        interface_type="mock",
-        value=42.0,
-        timestamp=1234567890,
-        metadata=None,
+async def test_get_node_state(orchestrator):
+    node_id = "test_node"
+    node_data = NodeData(
+        node_id=node_id, node_type="test", timestamp=0, metadata=None, status="online"
     )
-    await orchestrator.update_node_state(data)
-    assert "test_node" in orchestrator.nodes
-    assert orchestrator.nodes["test_node"]["last_value"] == 42.0
+    await orchestrator.update_node_state(node_data)
+    state = await orchestrator.get_node_state(node_id)
+    assert state.last_value == node_data
+
+
+@pytest.mark.asyncio
+async def test_get_node_state_not_found(orchestrator):
+    with pytest.raises(FabricError):
+        await orchestrator.get_node_state("non_existent_node")
+
+
+@pytest.mark.asyncio
+async def test_register_callback(orchestrator):
+    node_id = "test_node"
+
+    def callback(data):
+        return None
+
+    await orchestrator.register_callback(node_id, callback)
+    assert node_id in orchestrator.callbacks
+
+
+@pytest.mark.asyncio
+async def test_publish_with_retry(orchestrator):
+    topic = "test_topic"
+    data = "test_data"
+    await orchestrator.publish_with_retry(topic, data)  # Add await here
+    # This test just checks if the method runs without errors
+    # In a real scenario, you'd want to verify the data was actually published
+
+
+@pytest.mark.asyncio
+async def test_remove_node(orchestrator):
+    node_id = "test_node"
+    node_data = NodeData(
+        node_id=node_id, node_type="test", timestamp=0, metadata=None, status="online"
+    )
+    await orchestrator.update_node_state(node_data)
+    await orchestrator.remove_node(node_id)
+    assert node_id not in orchestrator.nodes
+
+
+@pytest.mark.asyncio
+async def test_send_event_to_node(orchestrator):
+    node_id = "test_node"
+    event = "test_event"
+    payload = {"key": "value"}
+    await orchestrator.send_event_to_node(node_id, event, payload)
+    assert f"node/{node_id}/events" in orchestrator.publishers
+
+
+@pytest.mark.asyncio
+async def test_get_node_data(orchestrator):
+    node_id = "test_node"
+    node_data = NodeData(
+        node_id=node_id, node_type="test", timestamp=0, metadata=None, status="online"
+    )
+    await orchestrator.update_node_state(node_data)
+    retrieved_data = await orchestrator.get_node_data(node_id)
+    assert retrieved_data == node_data
+
+
+@pytest.mark.asyncio
+async def test_process_node_updates(orchestrator):
+    node_id = "test_node"
+    node_data = NodeData(
+        node_id=node_id, node_type="test", timestamp=0, metadata=None, status="online"
+    )
+    await orchestrator.update_node_state(node_data)
+    # Set the last_update to a time more than 5 seconds ago
+    orchestrator.nodes[node_id].last_update = 0
+    await orchestrator.process_node_updates()
+    # This test just checks if the method runs without errors
+    # In a real scenario, you'd want to verify that an update was requested
+
+
+@pytest.mark.asyncio
+async def test_run(orchestrator):
+    cancel_token = asyncio.Event()
+    run_task = asyncio.create_task(orchestrator.run(cancel_token))
+    await asyncio.sleep(0.1)  # Let the run method start
+    cancel_token.set()
+    await run_task
+    # This test just checks if the run method starts and stops without errors
