@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -97,7 +97,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Rust node dependencies
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: rust/docker/node_dependencies.Dockerfile
@@ -105,7 +105,7 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/rust_node_dependencies:latest
 
       - name: Build and push Rust orchestrator dependencies
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: rust/docker/orchestrator_dependencies.Dockerfile
@@ -113,7 +113,7 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/rust_orchestrator_dependencies:latest
 
       - name: Build and push Rust node
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: rust/docker/node.Dockerfile
@@ -121,7 +121,7 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/rust_node:latest
 
       - name: Build and push Rust orchestrator
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: rust/docker/orchestrator.Dockerfile
@@ -129,7 +129,7 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/rust_orchestrator:latest
 
       - name: Build and push Python node dependencies
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: python/docker/node_dependencies.Dockerfile
@@ -137,7 +137,7 @@ jobs:
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/python_node_dependencies:latest
 
       - name: Build and push Python node
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: python/docker/node.Dockerfile
