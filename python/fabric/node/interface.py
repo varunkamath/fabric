@@ -40,7 +40,11 @@ class NodeData:
 
 class NodeInterface(ABC):
     @abstractmethod
-    def get_config(self) -> NodeConfig:
+    async def run(self, node: Any, cancel_token: Any) -> None:
+        pass
+
+    @abstractmethod
+    async def get_config(self) -> Any:
         pass
 
     @abstractmethod
@@ -52,7 +56,7 @@ class NodeInterface(ABC):
         pass
 
     @abstractmethod
-    async def handle_event(self, event: str, payload: str) -> None:
+    async def handle_event(self, event: str, payload: Any) -> None:
         pass
 
     @abstractmethod

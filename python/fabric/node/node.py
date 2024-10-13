@@ -4,6 +4,7 @@ from typing import Dict, Optional, Callable, Any
 from zenoh import Session, Subscriber, Publisher, Sample
 from .interface import NodeInterface, NodeConfig
 import json
+import inspect
 
 # Set up logging
 logging.basicConfig(
@@ -50,12 +51,24 @@ class Node:
 
     async def cleanup(self) -> None:
         for publisher in self.publishers.values():
-            publisher.undeclare()
+            if hasattr(publisher, "undeclare"):
+                publisher.undeclare()
+            else:
+                logger.warning(
+                    f"Publisher {publisher} does not have an undeclare method"
+                )
         for subscriber in self.subscribers.values():
-            subscriber.undeclare()
+            if hasattr(subscriber, "undeclare"):
+                subscriber.undeclare()
+            else:
+                logger.warning(
+                    f"Subscriber {subscriber} does not have an undeclare method"
+                )
 
     async def create_publisher(self, topic: str) -> None:
-        self.publishers[topic] = self.session.declare_publisher(topic)
+        publisher = self.session.declare_publisher(topic)
+        self.publishers[topic] = publisher
+        logger.info(f"Created publisher for topic: {topic}")
 
     async def create_subscriber(
         self, topic: str, callback: Callable[[Sample], None]
@@ -64,15 +77,30 @@ class Node:
 
     async def publish(self, topic: str, data: Any) -> None:
         if topic in self.publishers:
-            await self.publishers[topic].put(data)
+            publisher = self.publishers[topic]
+            if hasattr(publisher, "put"):
+                put_method = publisher.put
+                if inspect.iscoroutinefunction(put_method):
+                    await put_method(data)
+                else:
+                    put_method(data)
+            elif hasattr(publisher, "write"):
+                write_method = publisher.write
+                if inspect.iscoroutinefunction(write_method):
+                    await write_method(data)
+                else:
+                    write_method(data)
+            else:
+                logger.error(
+                    f"Publisher for topic {topic} has no 'put' or 'write' method"
+                )
         else:
             logger.warning(f"Attempted to publish to non-existent topic: {topic}")
 
     async def handle_config_update(self, sample: Sample) -> None:
-        if self.interface:
-            config_data = json.loads(sample.payload.decode())
-            new_config = NodeConfig(**config_data)
-            await self.interface.update_config(new_config)
+        config_data = json.loads(sample.payload.decode())
+        new_config = NodeConfig(**config_data)
+        await self.update_config(new_config)
 
     async def get_config(self) -> NodeConfig:
         if self.interface:
@@ -87,6 +115,11 @@ class Node:
     def get_type(self) -> str:
         return self.node_type
 
-    async def handle_event(self, event: str, payload: dict) -> None:
+    async def handle_event(self, event: str, payload: Any) -> None:
         if self.interface:
             await self.interface.handle_event(event, payload)
+
+    async def update_config(self, new_config: NodeConfig):
+        if self.interface:
+            await self.interface.update_config(new_config)
+        self.config = new_config
