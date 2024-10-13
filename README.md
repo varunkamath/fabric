@@ -11,42 +11,38 @@
 
 ## Features
 
-- **Node Management**: Create and manage individual nodes with customizable configurations.
-- **Orchestration**: Centralized control and monitoring of multiple nodes.
-- **Real-time Communication**: Utilizes Zenoh for efficient, real-time data exchange between nodes and the orchestrator.
-- **Dynamic Configuration**: Nodes can receive and apply configuration updates at runtime.
-- **Health Monitoring**: Automatic health checks and status updates for all nodes.
-- **Fault Tolerance**: Detects and handles node failures, with automatic offline status updates after 10 seconds of inactivity.
-- **Extensible**: Easily create custom node types by implementing the `NodeInterface` trait.
-- **Cross-Language Compatibility**: Supports both Python and Rust implementations, allowing for mixed-language deployments.
+- Hybrid Rust and Python implementation for optimal performance and flexibility
+- Zenoh-based communication for efficient and reliable data exchange
+- Kubernetes-ready with Helm charts for easy deployment
+- Support for both Rust and Python nodes
+- Configurable node behavior and dynamic reconfiguration
+- Telemetry data collection and publishing
+- Command handling for node control
+- Heartbeat mechanism for node health monitoring
 
 ## Project Structure
 
 - `rust/`
   - `fabric/`: Core Rust library for the fabric system
-    - `src/`: Source code for the fabric library
-    - `tests/`: Integration tests for the fabric library
   - `examples/`: Example implementations using the fabric library
-    - `example_node/`: Example of a Rust node implementation
+    - `example_node/`: Example of a Rust node implementation (Quadcopter)
     - `example_orchestrator/`: Example of a Rust orchestrator implementation
 - `python/`
   - `fabric/`: Core Python library for the fabric system
-    - `node/`: Node implementation
-    - `orchestrator/`: Orchestrator implementation
-    - `tests/`: Unit and integration tests
   - `examples/`: Example implementations using the fabric library
     - `example_quadcopter_node.py`: Example of a Python node implementation
+- `helm/`: Helm charts for Kubernetes deployment
 - `docker/`: Dockerfiles for building containers
 - `.github/workflows/`: CI/CD configuration
 
 ## Prerequisites
 
 - Docker
-- Kubernetes cluster (Minikube for local testing, or a multi-node cluster for distributed setup)
+- k3d
 - kubectl
+- Helm
 - Rust (for Rust components)
 - Python 3.12.7 (for Python components)
-- Helm (for deploying with Kubernetes)
 
 ## Building the Project
 
@@ -58,70 +54,46 @@
 
    This script builds Docker images for both Rust and Python components.
 
-## Deploying with Kubernetes
+## Deploying with k3d and Helm
 
-### Local Deployment
+1. Create a k3d cluster:
 
-1. Start Minikube:
-
-   ```
-   minikube start
+   ```bash
+   k3d cluster create fabric-cluster
    ```
 
-2. Set up Minikube to use its Docker daemon:
+2. Build and load images into the k3d cluster:
 
+   ```bash
+   ./deploy_images.bash
    ```
-   eval $(minikube -p minikube docker-env)
-   ```
-
-3. Apply the local Kubernetes configuration:
-
-   ```
-   kubectl apply -f local-sensor-network.yaml
-   ```
-
-### Distributed Deployment
-
-1. Ensure your Kubernetes cluster spans across the target hosts.
-
-2. Label your nodes appropriately (host1, host2, host3, host4):
-
-   ```
-   kubectl label nodes <node-name> kubernetes.io/hostname=host1
-   ```
-
-   Repeat for each host.
 
 3. Deploy using Helm:
 
+   ```bash
+   ./deploy_fabric.bash
    ```
-   helm install fabric ./fabric-chart -f values.yaml
-   ```
+
+   This script will create a new k3d cluster if it doesn't exist, load the images, and deploy the Helm chart.
 
 ## Monitoring and Debugging
 
 1. Check the status of your pods:
 
-   ```
+   ```bash
    kubectl get pods
    ```
 
 2. View logs from a specific pod:
 
-   ```
+   ```bash
    kubectl logs <pod-name>
    ```
 
 3. To interact with the control node service:
 
-   ```
+   ```bash
    kubectl port-forward service/control-node-service 7447:7447
-   ```
-
-4. Using k9s:
-
-   ```
-   k9s
    ```
 
 ## Development
@@ -132,13 +104,13 @@ This project uses pre-commit hooks to ensure code quality and consistency. To se
 
 1. Install pre-commit:
 
-   ```
+   ```bash
    pip install pre-commit
    ```
 
 2. Install the git hook scripts:
 
-   ```
+   ```bash
    pre-commit install
    ```
 
