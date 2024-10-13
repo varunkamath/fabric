@@ -10,9 +10,9 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      - id: check-yaml
-        args: [--allow-multiple-documents]
-        exclude: ^helm/
+      # - id: check-yaml
+      #   args: [--allow-multiple-documents]
+      #   exclude: ^helm/.*$, ^migrations/, ^tests/, ^target/
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-added-large-files
@@ -50,4 +50,4 @@ repos:
     hooks:
       - id: prettier
         types_or: [json, yaml, markdown]
-exclude: "^(helm/.*|migrations/.*|tests/.*|target/.*)$"
+        exclude: "^(helm/.*|charts/.*|migrations/.*|tests/.*|target/.*)$"

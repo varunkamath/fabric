@@ -10,5 +10,9 @@ COPY ./python /app
 # Make port 7447 available to the world outside this container
 EXPOSE 7447
 
-# Run the node when the container launches
-CMD ["python", "-m", "fabric.node.node"]
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV RUST_LOG=info
+
+# Run the random int node when the container launches
+CMD ["python", "examples/example_random_int_node.py"]

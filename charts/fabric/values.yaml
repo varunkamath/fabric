@@ -1,0 +1,1 @@
+replicaCount: 2 # This will create 2 node deployments

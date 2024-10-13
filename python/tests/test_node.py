@@ -6,7 +6,7 @@ from fabric.node.interface import NodeConfig
 
 
 @pytest.fixture
-def zenoh_session():
+async def zenoh_session():
     config = zenoh.Config()
     session = zenoh.open(config)
     yield session
@@ -14,11 +14,11 @@ def zenoh_session():
 
 
 @pytest.fixture
-def node(zenoh_session):
+async def node(zenoh_session):
     node_config = NodeConfig(node_id="test_node", config={"key": "value"})
     node = Node("test_node", "test", node_config, zenoh_session)
     yield node
-    node.cleanup()
+    await node.cleanup()
 
 
 @pytest.mark.asyncio
@@ -53,8 +53,6 @@ async def test_node_get_type(node):
 
 @pytest.mark.asyncio
 async def test_node_handle_event(node):
-    # This test assumes that the node's interface is implemented
-    # and has a handle_event method. If not, you may need to create a mock interface.
     node.interface = MockNodeInterface()
     await node.handle_event("test_event", "test_payload")
     assert node.interface.last_event == "test_event"
@@ -83,9 +81,10 @@ async def test_node_handle_config_update(node):
 
 @pytest.mark.asyncio
 async def test_node_publish(node):
-    node.publish("test_topic", "test_data")
-    # This test just checks if the publish method runs without errors
-    # In a real scenario, you'd want to verify the data was actually published
+    mock_publisher = MockPublisher()
+    node.publishers["test_topic"] = mock_publisher
+    await node.publish("test_topic", "test_data")
+    assert mock_publisher.published_data == "test_data"
 
 
 @pytest.mark.asyncio
@@ -107,10 +106,33 @@ class MockNodeInterface:
         self.last_event = event
         self.last_payload = payload
 
+    async def get_config(self):
+        return NodeConfig(node_id="test_node", config={"key": "value"})
+
+    async def set_config(self, config):
+        pass
+
+    async def update_config(self, config):
+        pass
+
+    async def run(self, node, cancel_token):
+        pass
+
 
 class MockSample:
     def __init__(self, payload):
         self.payload = payload.encode("utf-8")
+
+
+class MockPublisher:
+    def __init__(self):
+        self.published_data = None
+
+    def put(self, data):
+        self.published_data = data
+
+    def undeclare(self):
+        pass  # This method is called during cleanup
 
 
 if __name__ == "__main__":
