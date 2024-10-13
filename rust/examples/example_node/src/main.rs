@@ -6,8 +6,8 @@ use log::{debug, error, info, warn};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::any::Any;
+use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
@@ -66,7 +66,7 @@ impl NodeInterface for QuadcopterNode {
             "takeoff" => {
                 info!("Received takeoff command");
                 self.altitude = 10.0;
-                self.command_mode = "auto_takeoff".to_string();
+                self.command_mode = "auto_take_off".to_string();
             }
             "land" => {
                 info!("Received land command");
@@ -167,15 +167,20 @@ async fn main() -> Result<()> {
     // Initialize logger
     env_logger::init();
 
-    info!("Starting quadcopter node");
-    // Get vehicle ID from environment variable
-    let vehicle_id = std::env::var("VEHICLE_ID").unwrap_or_else(|_| "quadcopter1".to_string());
+    // Read VEHICLE_ID from environment variable
+    let vehicle_id = env::var("VEHICLE_ID").expect("VEHICLE_ID must be set");
+
+    info!("Starting quadcopter node with ID: {}", vehicle_id);
+
     let config = NodeConfig {
-        node_id: vehicle_id,
-        config: json!({}),
+        node_id: vehicle_id.clone(),
+        config: serde_json::json!({
+            "node_type": "quadcopter"
+        }),
     };
-    let config_clone = config.clone();
-    let interface = Box::new(QuadcopterNode::new(config.clone()));
+
+    let quadcopter_node = QuadcopterNode::new(config.clone());
+
     let session = create_zenoh_session().await;
     info!("Created Zenoh session");
     let node = Node::new(
@@ -183,7 +188,7 @@ async fn main() -> Result<()> {
         "quadcopter".to_string(),
         config.clone(),
         session,
-        Some(interface),
+        Some(Box::new(quadcopter_node)),
     )
     .await?;
     info!("Created Node");
@@ -230,7 +235,7 @@ async fn main() -> Result<()> {
     }
 
     // Set up publisher to send telemetry data
-    let telemetry_topic = format!("node/{}/quadcopter/telemetry", config_clone.node_id);
+    let telemetry_topic = format!("node/{}/quadcopter/telemetry", vehicle_id);
     node.create_publisher(telemetry_topic.clone()).await?;
     info!("Created publisher for telemetry");
 
@@ -278,6 +283,43 @@ async fn main() -> Result<()> {
         })
     };
 
+    // Set up publisher for random integers
+    let random_int_topic = "node/data";
+    node.create_publisher(random_int_topic.to_string()).await?;
+    info!("Created publisher for random integers");
+
+    // Spawn a task to publish random integers
+    let random_int_task = {
+        let node_clone = node.clone();
+        let cancel_token_clone = cancel_token.clone();
+        let config = config.clone();
+        tokio::spawn(async move {
+            let mut interval = interval(Duration::from_secs(1));
+            let mut rng = rand::rngs::StdRng::from_entropy();
+            loop {
+                tokio::select! {
+                    _ = cancel_token_clone.cancelled() => {
+                        info!("Random int task cancelled");
+                        break;
+                    }
+                    _ = interval.tick() => {
+                        let random_int = rng.gen_range(0..100);
+                        let payload = serde_json::json!({
+                            "node_id": config.node_id,
+                            "node_type": "quadcopter",
+                            "value": random_int
+                        }).to_string();
+                        if let Err(e) = node_clone.publish(random_int_topic, payload.into_bytes()).await {
+                            error!("Failed to publish random int: {:?}", e);
+                        } else {
+                            info!("Published random int: {}", random_int);
+                        }
+                    }
+                }
+            }
+        })
+    };
+
     // Run the node
     info!("Running node");
     node.run(cancel_token.clone()).await?;
@@ -289,6 +331,17 @@ async fn main() -> Result<()> {
     cancel_token.cancel();
     telemetry_task.await.unwrap();
 
+    // Cancel the random int task on Ctrl+C
+    random_int_task.await.unwrap();
+
     info!("Node shut down successfully");
+    Ok(())
+}
+
+#[allow(dead_code)]
+async fn publish_telemetry(node: &Node, topic: &str, telemetry: &TelemetryData) -> Result<()> {
+    let payload = serde_json::to_string(&telemetry)?;
+    node.publish(topic, payload.into_bytes()).await?;
+    info!("Successfully published telemetry");
     Ok(())
 }

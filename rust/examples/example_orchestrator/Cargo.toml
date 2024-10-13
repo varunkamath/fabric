@@ -3,6 +3,10 @@ name = "example_orchestrator"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "example_orchestrator"
+path = "src/main.rs"
+
 [dependencies]
 fabric = { path = "../../fabric" }
 tokio = { version = "1.39", features = ["full"] }

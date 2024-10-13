@@ -41,7 +41,7 @@ pub struct Orchestrator {
 }
 
 impl Orchestrator {
-    pub async fn new(id: String, session: Arc<Session>) -> Result<Self> {
+    pub async fn new(id: String, session: Arc<Session>) -> Result<Arc<Self>> {
         info!("Creating new orchestrator: {}", id);
         let (subscriber_tx, subscriber_rx) = mpsc::channel(100);
         let orchestrator = Self {
@@ -63,7 +63,7 @@ impl Orchestrator {
                 .await;
         });
 
-        Ok(orchestrator)
+        Ok(Arc::new(orchestrator))
     }
 
     pub async fn run(&self, cancel: CancellationToken) -> Result<()> {
@@ -218,7 +218,7 @@ impl Orchestrator {
             node_data.node_id.clone(),
             NodeState {
                 last_value: node_data.clone(),
-                last_update: std::time::SystemTime::now(),
+                last_update: SystemTime::now(),
             },
         );
 
@@ -434,5 +434,9 @@ impl Orchestrator {
                 }
             }
         }
+    }
+
+    pub async fn get_nodes(&self) -> HashMap<String, NodeState> {
+        self.nodes.lock().await.clone()
     }
 }

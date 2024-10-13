@@ -1,0 +1,32 @@
+{{- range $i, $e := until (int .Values.replicaCount) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fabric.fullname" $ }}-node-{{ $i }}
+  labels:
+    {{- include "fabric.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "fabric.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: node
+      node-id: node-{{ $i }}
+  template:
+    metadata:
+      labels:
+        {{- include "fabric.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: node
+        node-id: node-{{ $i }}
+    spec:
+      containers:
+        - name: {{ $.Chart.Name }}-node
+          image: "{{ $.Values.image.repository }}:{{ $.Values.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.image.pullPolicy }}
+          env:
+            - name: VEHICLE_ID
+              value: "quadcopter{{ $i }}"
+          # ... (rest of the container spec)
+{{- end }}

@@ -8,29 +8,33 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
+    python3-venv \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Get the latest version of uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# Initialize the virtual environment
-RUN uv venv /opt/venv
-# Use the virtual environment automatically
-ENV VIRTUAL_ENV=/opt/venv
-# Place entry points in the environment at the front of the path
+# Create and activate a virtual environment
+RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Create a directory for our application
 WORKDIR /app
 
-# Copy our pyproject.toml and poetry.lock files
-COPY python/pyproject.toml python/poetry.lock ./
+# Copy our pyproject.toml, poetry.lock, setup.py, and README.md files
+COPY python/pyproject.toml python/poetry.lock python/setup.py python/README.md ./
 
-# Install Python dependencies
-RUN uv pip install --no-cache-dir poetry
-RUN poetry config virtualenvs.create false
-RUN poetry install --no-dev
+# Copy the fabric library source code
+COPY python/fabric ./fabric
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry
+
+# Install Python dependencies and the fabric library
+RUN poetry config virtualenvs.create false \
+    && poetry install --only main \
+    && pip install -e .
+
+# Install eclipse-zenoh
+RUN pip install eclipse-zenoh==0.11.0
 
 # The resulting image will have all dependencies installed

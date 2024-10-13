@@ -21,6 +21,9 @@ spec:
         - name: rust-node
           image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag | default "latest" }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: VEHICLE_ID
+              value: "quadcopter-{{ .Release.Name }}-{{ .Release.Revision }}-{{ randAlphaNum 5 | lower }}"
           ports:
             - name: http
               containerPort: 7447
