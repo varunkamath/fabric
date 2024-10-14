@@ -56,25 +56,17 @@
 
 ## Deploying with k3d and Helm
 
-1. Create a k3d cluster:
-
-   ```bash
-   k3d cluster create fabric-cluster
-   ```
-
-2. Build and load images into the k3d cluster:
-
-   ```bash
-   ./deploy_images.bash
-   ```
-
-3. Deploy using Helm:
+1. Deploy the fabric system:
 
    ```bash
    ./deploy_fabric.bash
    ```
 
-   This script will create a new k3d cluster if it doesn't exist, load the images, and deploy the Helm chart.
+   This script will:
+
+   - Create a new k3d cluster with a built-in registry if it doesn't exist
+   - Build and push the Docker images to the k3d registry
+   - Deploy the Helm chart
 
 ## Monitoring and Debugging
 

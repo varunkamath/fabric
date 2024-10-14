@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the GitHub Container Registry and repository name
-REGISTRY="ghcr.io"
+REGISTRY="k3d-registry.localhost:5001"
 REPO_NAME="varunkamath/fabric"
 CLUSTER_NAME="fabric-cluster"
 

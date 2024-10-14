@@ -4,7 +4,6 @@ metadata:
   name: {{ include "fabric-chart.fullname" . }}-python-node
   labels:
     {{- include "fabric-chart.labels" . | nindent 4 }}
-    app.kubernetes.io/component: python-node
 spec:
   replicas: {{ .Values.replicaCount.pythonNode }}
   selector:
@@ -19,8 +18,19 @@ spec:
     spec:
       containers:
         - name: python-node
-          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/python_node:{{ .Values.image.tag | default "latest" }}"
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/python_node:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: VEHICLE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: LOG_LEVEL
+              value: "INFO"
+            - name: NODE_TYPE
+              value: "quadcopter"
           ports:
             - name: http
               containerPort: 7447

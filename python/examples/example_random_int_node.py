@@ -1,6 +1,7 @@
 import asyncio
 import random
 import time
+import logging
 from zenoh import Config, Session
 from fabric import Node
 from fabric.node.interface import NodeInterface, NodeConfig, NodeData
@@ -34,8 +35,11 @@ class RandomIntNode(NodeInterface):
                 metadata={"value": random_int},
                 status="online",
             )
-            await node.publish("node/data", node_data.to_json())
-            print(f"Published: {node_data.to_json()}")  # Add this line for debugging
+            topic = f"node/{self.node_id}/random_int/data"
+            await node.publish(topic, node_data.to_json())
+            print(
+                f"Published to {topic}: {node_data.to_json()}"
+            )  # Add this line for debugging
             await asyncio.sleep(self.publish_rate)
 
     async def handle_event(self, event: str, payload: dict) -> None:
@@ -46,15 +50,18 @@ class RandomIntNode(NodeInterface):
         await self.set_config(config)
 
 
-async def main():
+async def create_zenoh_session() -> Session:
     config = Config()
     session = Session(config)
+    info = session.info()
+    logging.info(f"Zenoh session created with ZID: {info.zid()}")
+    return session
 
-    initial_config = {
-        "publish_rate": random.uniform(
-            0.5, 2.0
-        )  # Random publish rate between 0.5 and 2 seconds
-    }
+
+async def main():
+    session = await create_zenoh_session()
+
+    initial_config = {"publish_rate": random.uniform(0.5, 2.0)}
 
     node_config = NodeConfig(
         node_id=f"random_int_node_{random.randint(1, 100)}", config=initial_config
@@ -62,6 +69,10 @@ async def main():
     random_int_node = RandomIntNode(node_config.node_id, initial_config)
     node = Node(node_config.node_id, "random_int", node_config, session)
     node.interface = random_int_node
+
+    topic = f"node/{node_config.node_id}/random_int/data"
+    await node.create_publisher(topic)
+    print(f"Created publisher for topic: {topic}")  # Add this line for debugging
 
     cancel_token = asyncio.Event()
     try:
@@ -71,8 +82,11 @@ async def main():
     finally:
         cancel_token.set()
         await node.cleanup()
-        session.close()  # This is now a synchronous operation
+        await session.close()
+        logging.debug(f"Zenoh session closed: {session}")
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger(__name__)
     asyncio.run(main())

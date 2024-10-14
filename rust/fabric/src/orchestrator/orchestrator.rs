@@ -141,7 +141,7 @@ impl Orchestrator {
     async fn update_node_health(&self, sample: Sample) {
         let key_expr = sample.key_expr.as_str();
         let node_id = key_expr.split('/').nth(1).unwrap_or("unknown");
-        info!("Updating node health for node: {}", node_id);
+        info!("Received health update for node: {}", node_id);
 
         // Convert ZBuf to a contiguous slice of bytes
         let payload_bytes = sample.value.payload.contiguous();

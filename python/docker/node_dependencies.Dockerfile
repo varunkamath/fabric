@@ -1,17 +1,8 @@
-# Use Ubuntu 24.04 as the base image
-FROM ubuntu:24.04
+# Use Alpine Linux as the base image
+FROM alpine:latest
 
-# Avoid prompts from apt
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Update and install necessary packages
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    curl \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install Python and necessary build tools
+RUN apk add --no-cache python3 py3-pip gcc musl-dev libffi-dev openssl-dev
 
 # Create and activate a virtual environment
 RUN python3 -m venv /opt/venv
@@ -37,4 +28,7 @@ RUN poetry config virtualenvs.create false \
 # Install eclipse-zenoh
 RUN pip install eclipse-zenoh==0.11.0
 
-# The resulting image will have all dependencies installed
+# Copy the application code
+COPY python/examples ./examples
+
+# The resulting image will have all dependencies installed and source code

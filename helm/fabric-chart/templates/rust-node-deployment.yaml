@@ -4,7 +4,6 @@ metadata:
   name: {{ include "fabric-chart.fullname" . }}-rust-node
   labels:
     {{- include "fabric-chart.labels" . | nindent 4 }}
-    app.kubernetes.io/component: rust-node
 spec:
   replicas: {{ .Values.replicaCount.rustNode }}
   selector:
@@ -19,14 +18,24 @@ spec:
     spec:
       containers:
         - name: rust-node
-          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag | default "latest" }}"
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: VEHICLE_ID
-              value: "quadcopter-{{ .Release.Name }}-{{ .Release.Revision }}-{{ randAlphaNum 5 | lower }}"
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RUST_LOG
+              value: "info"
           ports:
             - name: http
               containerPort: 7447
               protocol: TCP
           resources:
             {{- toYaml .Values.rustNode.resources | nindent 12 }}
+          volumeMounts:
+            - name: temp-storage
+              mountPath: /tmp
+      volumes:
+        - name: temp-storage
+          emptyDir: {}

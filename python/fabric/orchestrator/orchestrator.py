@@ -45,10 +45,10 @@ class Orchestrator:
 
     async def initialize(self) -> None:
         try:
-            for node_id in self.nodes.keys():
-                await self.create_subscriber(
-                    f"node/{node_id}/data", self.handle_node_data
-                )
+            # Subscribe to all quadcopter telemetry topics
+            await self.create_subscriber(
+                "node/*/quadcopter/telemetry", self.handle_node_data
+            )
             logger.info(f"Orchestrator {self.id} initialized successfully")
         except Exception as e:
             logger.error(
@@ -146,8 +146,16 @@ class Orchestrator:
 
     async def handle_node_data(self, sample: Sample) -> None:
         try:
-            node_data = NodeData.from_json(sample.payload.decode("utf-8"))
-            await self.update_node_state(node_data)
+            data = json.loads(sample.payload.decode())
+            node_id = data.get("node_id")
+            if node_id:
+                node_data = NodeData(**data)
+                await self.update_node_state(node_data)
+                logger.debug(f"Updated state for node {node_id}")
+            else:
+                logger.warning(f"Received data without node_id: {data}")
+        except json.JSONDecodeError:
+            logger.error("Failed to parse received data as JSON")
         except Exception as e:
             logger.error(f"Error handling node data: {e}", exc_info=True)
 

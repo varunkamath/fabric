@@ -32,8 +32,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    info!("Subscribing to node data...");
-    let subscriber = session.declare_subscriber("node/data").res().await.unwrap();
+    info!("Subscribing to node telemetry...");
+    let subscriber = session
+        .declare_subscriber("node/*/quadcopter/telemetry")
+        .res()
+        .await
+        .unwrap();
 
     let orchestrator_clone = orchestrator.clone();
     let subscriber_handle = tokio::spawn(async move {

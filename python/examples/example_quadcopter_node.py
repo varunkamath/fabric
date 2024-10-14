@@ -51,7 +51,7 @@ class QuadcopterNode(NodeInterface):
     def get_type(self) -> str:
         return "quadcopter"
 
-    async def handle_event(self, event: str, payload: str) -> None:
+    async def handle_event(self, event: str, payload: Any) -> None:
         if event == QuadcopterCommand.MOVE_TO:
             self.command_mode = "moving"
             logger.info(f"Moving to position: {payload}")
@@ -68,6 +68,10 @@ class QuadcopterNode(NodeInterface):
         await self.set_config(config)
 
     async def run(self, node: Node, cancel_token: asyncio.Event) -> None:
+        telemetry_topic = f"node/{self.node_id}/quadcopter/telemetry"
+        await node.create_publisher(telemetry_topic)
+        logger.info(f"Created publisher for topic: {telemetry_topic}")
+
         while not cancel_token.is_set():
             self.altitude += random.uniform(-0.1, 0.1)
             self.battery_level -= random.uniform(0.1, 0.5)
@@ -76,25 +80,37 @@ class QuadcopterNode(NodeInterface):
                 logger.warning("Low battery! Returning to home position.")
                 self.command_mode = "returning_home"
 
+            telemetry_data = {
+                "altitude": self.altitude,
+                "battery_level": self.battery_level,
+                "command_mode": self.command_mode,
+            }
+
             node_data = NodeData(
                 node_id=self.node_id,
                 node_type=self.get_type(),
                 timestamp=int(time.time()),
-                metadata={
-                    "altitude": self.altitude,
-                    "battery_level": self.battery_level,
-                    "command_mode": self.command_mode,
-                },
+                metadata=telemetry_data,
                 status="online",
             )
 
-            await node.publish(f"node/{self.node_id}/data", node_data.to_json())
+            await node.publish(telemetry_topic, node_data.to_json())
+            logger.info(
+                f"Published telemetry data to {telemetry_topic}: {node_data.to_json()}"
+            )
             await asyncio.sleep(1)
 
 
-async def main():
+async def create_zenoh_session() -> Session:
     config = Config()
-    session = await Session.open(config)
+    session = Session(config)
+    info = session.info()
+    logger.info(f"Zenoh session created with ZID: {info.zid()}")
+    return session
+
+
+async def main():
+    session = await create_zenoh_session()
 
     initial_config = {
         "quadcopter_config": {
@@ -112,13 +128,12 @@ async def main():
 
     cancel_token = asyncio.Event()
     try:
-        await asyncio.gather(
-            node.run(cancel_token), quadcopter_node.run(node, cancel_token)
-        )
+        await node.run(cancel_token)
     except KeyboardInterrupt:
         logger.info("Stopping quadcopter node...")
     finally:
         cancel_token.set()
+        await node.cleanup()
         await session.close()
 
 
