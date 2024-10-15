@@ -7,8 +7,8 @@ REPO_NAME="varunkamath/fabric"
 # Build and tag the images
 docker build -t ${REGISTRY}/${REPO_NAME}/rust_node:latest -f rust/docker/node.Dockerfile .
 docker build -t ${REGISTRY}/${REPO_NAME}/rust_orchestrator:latest -f rust/docker/orchestrator.Dockerfile .
-docker build --no-cache -t ${REGISTRY}/${REPO_NAME}/python_node:latest -f python/docker/node.Dockerfile .
-docker build --no-cache -t ${REGISTRY}/${REPO_NAME}/python_orchestrator:latest -f python/docker/orchestrator.Dockerfile .
+docker build -t ${REGISTRY}/${REPO_NAME}/python_node:latest -f python/docker/node.Dockerfile .
+docker build -t ${REGISTRY}/${REPO_NAME}/python_orchestrator:latest -f python/docker/orchestrator.Dockerfile .
 
 # Tag the images to k3d-registry.localhost:5001/varunkamath/fabric
 docker tag ghcr.io/varunkamath/fabric/rust_node:latest k3d-registry.localhost:5001/varunkamath/fabric/rust_node:latest

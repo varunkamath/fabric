@@ -100,15 +100,18 @@ class Orchestrator:
         self, topic: str, callback: Callable[[Sample], None]
     ) -> None:
         try:
-            self.subscribers[topic] = await self.session.declare_subscriber(
-                topic, callback
-            )
+            subscriber = self.session.declare_subscriber(topic, callback)
+            self.subscribers[topic] = subscriber
             logger.debug(f"Created subscriber for topic: {topic}")
         except Exception as e:
             logger.error(
                 f"Error creating subscriber for topic {topic}: {e}", exc_info=True
             )
-            raise
+            # You might want to re-raise the exception or handle it differently
+            # depending on your application's needs
+            raise FabricError(
+                f"Failed to create subscriber for topic {topic}: {str(e)}"
+            )
 
     async def publish_node_config(self, node_id: str, config: NodeConfig) -> None:
         topic = f"node/{node_id}/config"
@@ -150,8 +153,8 @@ class Orchestrator:
             node_id = data.get("node_id")
             if node_id:
                 node_data = NodeData(**data)
-                await self.update_node_state(node_data)
-                logger.debug(f"Updated state for node {node_id}")
+                asyncio.create_task(self.update_node_state(node_data))
+                logger.debug(f"Received data for node {node_id}")
             else:
                 logger.warning(f"Received data without node_id: {data}")
         except json.JSONDecodeError:

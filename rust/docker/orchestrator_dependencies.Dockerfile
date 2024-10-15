@@ -1,18 +1,15 @@
-# Use Alpine Linux as the base image
-FROM alpine:latest AS base
+# Use rust:alpine as the base image
+FROM rust:alpine
 
 # Install build dependencies
-RUN apk add --no-cache curl gcc musl-dev openssl-dev lld
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+RUN apk add --no-cache musl-dev openssl-dev lld
 
 # Create a new empty shell project
-RUN USER=root cargo new --bin app
 WORKDIR /app
+RUN cargo new --bin app
+WORKDIR /app/app
 
-# Copy our manifests
+# Copy our manifests and fabric library
 COPY rust/examples/example_orchestrator/Cargo.toml ./
 COPY rust/fabric /fabric
 
@@ -32,34 +29,10 @@ EOF
 # Build only the dependencies to cache them
 RUN cargo build --release --offline
 
-# Remove the source code
+# Remove the source code to prepare for the next stage
 RUN rm -rf src
 
-# Copy the actual source code
-COPY rust/examples/example_orchestrator/src ./src
-
-# Build for release
-RUN cargo build --release --offline
-
-# Final stage
-FROM alpine:latest
-
-# Install runtime dependencies
-RUN apk add --no-cache libgcc curl gcc musl-dev openssl-dev lld
-
-# Install Rust
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
-
-# Copy the build artifact, source code, and vendored dependencies
-COPY --from=base /app/target/release/example_orchestrator /usr/local/bin/
-COPY --from=base /app /app
-COPY --from=base /root/.cargo /root/.cargo
-
-# Add fabric library
-COPY --from=base /fabric /fabric
-
 # Set the working directory
-WORKDIR /app/example_orchestrator
+WORKDIR /app/app
 
-# The resulting image will have all dependencies and source code
+# The resulting image will have vendored dependencies and can be used for offline builds

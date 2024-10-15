@@ -1,8 +1,8 @@
 # Use Alpine Linux as the base image
 FROM alpine:latest
 
-# Install Python and necessary build tools
-RUN apk add --no-cache python3 py3-pip gcc musl-dev libffi-dev openssl-dev
+# Install Python, Rust, and necessary build tools
+RUN apk add --no-cache python3 py3-pip gcc musl-dev libffi-dev openssl-dev rust cargo
 
 # Create and activate a virtual environment
 RUN python3 -m venv /opt/venv
@@ -15,7 +15,7 @@ WORKDIR /app
 COPY python/pyproject.toml python/poetry.lock ./
 
 # Install Poetry and dependencies
-RUN pip install --no-cache-dir poetry \
+RUN pip install --no-cache-dir poetry uv \
     && poetry config virtualenvs.create false \
     && poetry install --no-dev
 
@@ -24,6 +24,6 @@ COPY python/fabric ./fabric
 COPY python/setup.py python/README.md ./
 
 # Install the fabric library
-RUN pip install -e .
+RUN uv pip install -e .
 
 # The resulting image will have all dependencies installed and source code
