@@ -14,7 +14,7 @@ RUN cargo build --release --offline
 FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk add --no-cache libgcc musl-dev openssl-dev lld
+RUN apk add --no-cache libgcc
 
 # Copy the build artifact
 COPY --from=builder /app/app/target/release/example_node /usr/local/bin/
