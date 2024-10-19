@@ -49,3 +49,7 @@ Selector labels
 app.kubernetes.io/name: {{ include "fabric-chart.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
+
+{{- define "uuidv4" -}}
+{{- randAlphaNum 8 | lower -}}
+{{- end -}}

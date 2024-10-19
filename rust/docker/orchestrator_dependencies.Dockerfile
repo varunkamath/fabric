@@ -27,7 +27,7 @@ directory = "vendor"
 EOF
 
 # Build only the dependencies to cache them
-RUN cargo build --release --offline
+# RUN cargo build --release --offline
 
 # Remove the source code to prepare for the next stage
 RUN rm -rf src

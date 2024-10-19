@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 use zenoh::config;
 use zenoh::prelude::r#async::*;
 use zenoh::Session;
@@ -152,12 +153,31 @@ async fn create_zenoh_session() -> Result<Session> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> fabric::Result<()> {
     env_logger::init();
 
-    let vehicle_id = env::var("VEHICLE_ID").unwrap_or_else(|_| "quadcopter_1".to_string());
+    // Get the node name from the QUADCOPTER_ID environment variable or generate a random one
+    let node_name = env::var("QUADCOPTER_ID").unwrap_or_else(|_| {
+        let random_id = Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap()
+            .to_string();
+        format!("rust-quadcopter-{}", random_id)
+    });
 
-    info!("Starting quadcopter node with ID: {}", vehicle_id);
+    // Ensure the node name starts with "rust-quadcopter-"
+    let node_name = if !node_name.starts_with("rust-quadcopter-") {
+        format!(
+            "rust-quadcopter-{}",
+            node_name.split('-').last().unwrap_or("")
+        )
+    } else {
+        node_name
+    };
+
+    info!("Starting quadcopter node with ID: {}", node_name);
 
     let initial_config = serde_json::json!({
         "quadcopter_config": {
@@ -169,12 +189,12 @@ async fn main() -> Result<()> {
     });
 
     let config = NodeConfig {
-        node_id: vehicle_id.clone(),
+        node_id: node_name.clone(),
         config: initial_config,
     };
 
     let mut quadcopter_node = QuadcopterNode {
-        node_id: vehicle_id.clone(),
+        node_id: node_name.clone(),
         altitude: 0.0,
         battery_level: 100.0,
         command_mode: "idle".to_string(),

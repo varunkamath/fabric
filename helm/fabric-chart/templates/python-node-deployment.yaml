@@ -4,6 +4,7 @@ metadata:
   name: {{ include "fabric-chart.fullname" . }}-python-node
   labels:
     {{- include "fabric-chart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: python-node
 spec:
   replicas: {{ .Values.replicaCount.pythonNode }}
   selector:
@@ -17,20 +18,20 @@ spec:
         app.kubernetes.io/component: python-node
     spec:
       containers:
-        - name: python-node
-          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/python_node:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        - name: {{ .Chart.Name }}-python-node
+          image: "{{ .Values.pythonNode.image.repository }}:{{ .Values.pythonNode.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.pythonNode.image.pullPolicy }}
           env:
-            - name: VEHICLE_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
             - name: PYTHONUNBUFFERED
               value: "1"
-            - name: LOG_LEVEL
-              value: "INFO"
-            - name: NODE_TYPE
-              value: "quadcopter"
+            - name: RUST_LOG
+              value: "info"
+            - name: QUADCOPTER_ID
+              value: {{ printf "python-quadcopter-%s" (randAlphaNum 8 | lower) | quote }}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "export QUADCOPTER_ID=quadcopter-python-$(hostname | cut -d'-' -f3-)"]
           ports:
             - name: http
               containerPort: 7447

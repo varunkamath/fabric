@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "fabric-chart.fullname" . }}-rust-orchestrator
+  name: rust-orchestrator
   labels:
     {{- include "fabric-chart.labels" . | nindent 4 }}
 spec:
@@ -21,7 +21,7 @@ spec:
           image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_orchestrator:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
-            - name: ORCHESTRATOR_ID
+            - name: HOSTNAME
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name

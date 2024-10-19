@@ -19,8 +19,8 @@ RUN apk add --no-cache libgcc musl-dev openssl-dev lld
 # Copy the build artifact
 COPY --from=builder /app/app/target/release/example_node /usr/local/bin/
 
-# Set the entrypoint
-ENTRYPOINT ["/usr/local/bin/example_node"]
+# Set the entrypoint with the environment variable
+ENTRYPOINT ["/bin/sh", "-c", "QUADCOPTER_ID=${QUADCOPTER_ID:-quadcopter-rust-$(uuidgen | cut -d'-' -f1)} /usr/local/bin/example_node"]
 
 # Set the RUST_LOG environment variable
 ENV RUST_LOG=info

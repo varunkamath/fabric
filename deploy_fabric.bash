@@ -2,7 +2,7 @@
 
 # Set variables
 NAMESPACE="default"
-RELEASE_NAME="fabric"
+RELEASE_NAME="fabric-cluster"
 CHART_PATH="helm/fabric-chart"
 VALUES_FILE="helm/fabric-chart/values.yaml"
 CLUSTER_NAME="fabric-cluster"
@@ -38,7 +38,7 @@ else
 fi
 
 # Stop and delete the existing k3d cluster if it exists
-if k3d cluster list | grep -q "$CLUSTER_NAME"; then
+if k3d cluster list | grep "$CLUSTER_NAME"; then
     echo "Stopping and deleting existing k3d cluster..."
     helm uninstall $RELEASE_NAME
     k3d cluster delete "$CLUSTER_NAME"
@@ -58,27 +58,19 @@ fi
 echo "Waiting for k3d cluster to be ready..."
 kubectl wait --for=condition=ready node --all --timeout=60s
 
-# # Build and push images
-# echo "Building and pushing images..."
-# ./build_services.bash
-
-# Add this after creating the cluster and before deploying the Helm chart
-echo "Listing images in k3d registry:"
-docker exec k3d-registry.localhost:5001 sh -c "ls -l /var/lib/registry/docker/registry/v2/repositories"
-
 # Deploy or upgrade the Helm chart
 echo "Deploying Helm chart..."
 helm upgrade --install $RELEASE_NAME $CHART_PATH \
-    --set image.registry="k3d-registry.localhost:5001" \
-    --set image.repository="varunkamath/fabric" \
-    --set image.tag="latest" \
-    --set replicaCount.rustNode=2 \
     -f $VALUES_FILE \
+    --set rustNode.image.repository=k3d-registry.localhost:5001/varunkamath/fabric-rust-node \
+    --set pythonNode.image.repository=k3d-registry.localhost:5001/varunkamath/fabric-python-node \
+    --set rustNode.image.tag=latest \
+    --set pythonNode.image.tag=latest \
     -n $NAMESPACE
 
 # Wait for pods to be ready
 echo "Waiting for pods to be ready..."
-# kubectl wait --for=condition=ready pod --all -n $NAMESPACE --timeout=300s
+kubectl wait --for=condition=ready pod --all -n $NAMESPACE --timeout=300s
 
 echo "Fabric system deployed successfully!"
 

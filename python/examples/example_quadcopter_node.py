@@ -2,10 +2,13 @@ import asyncio
 import logging
 import random
 import time
+import json
+import uuid
+import os
 from typing import Dict, Any
 from zenoh import Config, Session
 from fabric import Node
-from fabric.node.interface import NodeInterface, NodeConfig, NodeData
+from fabric.node.interface import NodeInterface, NodeConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -81,22 +84,20 @@ class QuadcopterNode(NodeInterface):
                 self.command_mode = "returning_home"
 
             telemetry_data = {
-                "altitude": self.altitude,
-                "battery_level": self.battery_level,
-                "command_mode": self.command_mode,
+                "node_id": self.node_id,
+                "node_type": self.get_type(),
+                "timestamp": int(time.time()),
+                "status": "online",
+                "metadata": {
+                    "altitude": self.altitude,
+                    "battery_level": self.battery_level,
+                    "command_mode": self.command_mode,
+                },
             }
 
-            node_data = NodeData(
-                node_id=self.node_id,
-                node_type=self.get_type(),
-                timestamp=int(time.time()),
-                metadata=telemetry_data,
-                status="online",
-            )
-
-            await node.publish(telemetry_topic, node_data.to_json())
+            await node.publish(telemetry_topic, json.dumps(telemetry_data))
             logger.info(
-                f"Published telemetry data to {telemetry_topic}: {node_data.to_json()}"
+                f"Published telemetry data to {telemetry_topic}: {telemetry_data}"
             )
             await asyncio.sleep(1)
 
@@ -110,6 +111,15 @@ async def create_zenoh_session() -> Session:
 
 
 async def main():
+    # Get the node name from the QUADCOPTER_ID environment variable or generate a random one
+    node_id = os.environ.get(
+        "QUADCOPTER_ID", f"python-quadcopter-{uuid.uuid4().hex[:8]}"
+    )
+
+    # Ensure the node name starts with "python-quadcopter-"
+    if not node_id.startswith("python-quadcopter-"):
+        node_id = f"python-quadcopter-{node_id.split('-')[-1]}"
+
     session = await create_zenoh_session()
 
     initial_config = {
@@ -121,20 +131,22 @@ async def main():
         }
     }
 
-    node_config = NodeConfig(node_id="quadcopter_1", config=initial_config)
-    quadcopter_node = QuadcopterNode("quadcopter_1", initial_config)
-    node = Node("quadcopter_1", "quadcopter", node_config, session)
+    node_config = NodeConfig(node_id=node_id, config=initial_config)
+    quadcopter_node = QuadcopterNode(node_id, initial_config)
+    node = Node(node_id, "quadcopter", node_config, session)
     node.interface = quadcopter_node
+
+    logger.info(f"Starting quadcopter node with ID: {node_id}")
 
     cancel_token = asyncio.Event()
     try:
         await node.run(cancel_token)
     except KeyboardInterrupt:
-        logger.info("Stopping quadcopter node...")
+        logger.info(f"Stopping quadcopter node {node_id}...")
     finally:
         cancel_token.set()
         await node.cleanup()
-        await session.close()
+        session.close()
 
 
 if __name__ == "__main__":
