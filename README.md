@@ -2,8 +2,8 @@
 
 ![CI Status](https://github.com/varunkamath/fabric/workflows/CI%20%2F%20CD/badge.svg)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Python Version](https://img.shields.io/badge/python-3.12.7-blue.svg)
-![Rust Version](https://img.shields.io/badge/rust-1.81.0-orange.svg)
+![Python Version](https://img.shields.io/badge/python-3.13.0-blue.svg)
+![Rust Version](https://img.shields.io/badge/rust-1.82.0-orange.svg)
 
 #### Framework Agnostically Bridging Resilient Interconnected Components
 
