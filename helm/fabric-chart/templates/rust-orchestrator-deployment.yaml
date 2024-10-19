@@ -1,10 +1,9 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "fabric-chart.fullname" . }}-rust-orchestrator
+  name: rust-orchestrator
   labels:
     {{- include "fabric-chart.labels" . | nindent 4 }}
-    app.kubernetes.io/component: rust-orchestrator
 spec:
   replicas: {{ .Values.replicaCount.rustOrchestrator }}
   selector:
@@ -19,8 +18,15 @@ spec:
     spec:
       containers:
         - name: rust-orchestrator
-          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_orchestrator:{{ .Values.image.tag | default "latest" }}"
+          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_orchestrator:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: RUST_LOG
+              value: "info"
           ports:
             - name: http
               containerPort: 7447

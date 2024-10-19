@@ -13,7 +13,6 @@
 
 - Hybrid Rust and Python implementation for optimal performance and flexibility
 - Zenoh-based communication for efficient and reliable data exchange
-- Kubernetes-ready with Helm charts for easy deployment
 - Support for both Rust and Python nodes
 - Configurable node behavior and dynamic reconfiguration
 - Telemetry data collection and publishing
@@ -31,11 +30,16 @@
   - `fabric/`: Core Python library for the fabric system
   - `examples/`: Example implementations using the fabric library
     - `example_quadcopter_node.py`: Example of a Python node implementation
-- `helm/`: Helm charts for Kubernetes deployment
-- `docker/`: Dockerfiles for building containers
-- `.github/workflows/`: CI/CD configuration
 
-## Prerequisites
+## Example Deployment (Kubernetes with Helm)
+
+This project includes an example deployment using Kubernetes and Helm charts. This is just one possible way to deploy a fabric-based system.
+
+- `helm/`: Helm charts for example Kubernetes deployment
+- `docker/`: Dockerfiles for building example containers
+- `.github/workflows/`: CI/CD configuration for the example deployment
+
+### Prerequisites for Example Deployment
 
 - Docker
 - k3d
@@ -44,7 +48,7 @@
 - Rust (for Rust components)
 - Python 3.12.7 (for Python components)
 
-## Building the Project
+### Building and Deploying the Example
 
 1. Build all services:
 
@@ -52,49 +56,13 @@
    ./build_services.bash
    ```
 
-   This script builds Docker images for both Rust and Python components.
-
-## Deploying with k3d and Helm
-
-1. Create a k3d cluster:
-
-   ```bash
-   k3d cluster create fabric-cluster
-   ```
-
-2. Build and load images into the k3d cluster:
-
-   ```bash
-   ./deploy_images.bash
-   ```
-
-3. Deploy using Helm:
+2. Deploy the fabric system:
 
    ```bash
    ./deploy_fabric.bash
    ```
 
-   This script will create a new k3d cluster if it doesn't exist, load the images, and deploy the Helm chart.
-
-## Monitoring and Debugging
-
-1. Check the status of your pods:
-
-   ```bash
-   kubectl get pods
-   ```
-
-2. View logs from a specific pod:
-
-   ```bash
-   kubectl logs <pod-name>
-   ```
-
-3. To interact with the control node service:
-
-   ```bash
-   kubectl port-forward service/control-node-service 7447:7447
-   ```
+   This script will create a k3d cluster, set up a local registry, and deploy the Helm chart.
 
 ## Development
 
@@ -119,13 +87,12 @@ This project uses pre-commit hooks to ensure code quality and consistency. To se
 To run the Python tests:
 
 ```bash
-pytest
+pytest python/tests
 ```
 
-To run the Rust tests:
+### To run the Rust tests:
 
 ```bash
-cd rust/fabric
 cargo test
 ```
 

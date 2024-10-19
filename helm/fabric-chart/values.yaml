@@ -5,34 +5,59 @@ replicaCount:
   rustOrchestrator: 1
 
 image:
-  registry: ghcr.io
+  registry: k3d-registry.localhost:5001
   repository: varunkamath/fabric
   pullPolicy: IfNotPresent
   tag: "latest"
 
 rustNode:
+  image:
+    repository: k3d-registry.localhost:5001/varunkamath/fabric-rust-node
+    tag: latest
+    pullPolicy: Always
   resources:
     limits:
       cpu: 100m
       memory: 128Mi
     requests:
-      cpu: 50m
-      memory: 64Mi
+      cpu: 100m
+      memory: 128Mi
 
 pythonNode:
+  image:
+    repository: k3d-registry.localhost:5001/varunkamath/fabric-python-node
+    tag: latest
+    pullPolicy: Always
   resources:
     limits:
       cpu: 100m
       memory: 128Mi
     requests:
-      cpu: 50m
-      memory: 64Mi
+      cpu: 100m
+      memory: 128Mi
 
 rustOrchestrator:
+  image:
+    repository: k3d-registry.localhost:5001/varunkamath/fabric-rust-orchestrator
+    tag: latest
+    pullPolicy: Always
   resources:
     limits:
-      cpu: 200m
-      memory: 256Mi
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+orchestrator:
+  image:
+    repository: k3d-registry.localhost:5001/varunkamath/fabric-orchestrator
+    tag: latest
+    pullPolicy: Always
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
     requests:
       cpu: 100m
       memory: 128Mi

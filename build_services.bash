@@ -1,19 +1,19 @@
 #!/bin/bash
 
-# Set the GitHub Container Registry and repository name
-REGISTRY="ghcr.io"
-REPO_NAME="varunkamath/fabric"
+# Set variables
+REGISTRY="k3d-registry.localhost:5001"
+REPOSITORY="varunkamath/fabric"
 
-# Build the Rust node
-docker build --no-cache -t ${REGISTRY}/${REPO_NAME}/rust_node:latest -f rust/docker/node.Dockerfile .
+# Build and push Rust node image
+docker build -t $REGISTRY/$REPOSITORY-rust-node:latest -f rust/docker/node.Dockerfile .
+docker push $REGISTRY/$REPOSITORY-rust-node:latest
 
-# Build the Rust orchestrator
-docker build --no-cache -t ${REGISTRY}/${REPO_NAME}/rust_orchestrator:latest -f rust/docker/orchestrator.Dockerfile .
+# Build and push Python node image
+docker build -t $REGISTRY/$REPOSITORY-python-node:latest -f python/docker/node.Dockerfile .
+docker push $REGISTRY/$REPOSITORY-python-node:latest
 
-# Build the Python node
-docker build --no-cache -t ${REGISTRY}/${REPO_NAME}/python_node:latest -f python/docker/node.Dockerfile .
+# Build and push Rust orchestrator image
+docker build -t $REGISTRY/$REPOSITORY-rust-orchestrator:latest -f rust/docker/orchestrator.Dockerfile .
+docker push $REGISTRY/$REPOSITORY-rust-orchestrator:latest
 
-# Build the Python orchestrator
-docker build --no-cache -t ${REGISTRY}/${REPO_NAME}/python_orchestrator:latest -f python/docker/orchestrator.Dockerfile .
-
-echo "All services built successfully!"
+echo "All services built and pushed successfully!"

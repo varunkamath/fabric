@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Optional, Callable, Any
+from typing import Dict, Optional, Callable, Any, Awaitable
 from zenoh import Session, Subscriber, Publisher, Sample
 from .interface import NodeInterface, NodeConfig
 import json
@@ -71,7 +71,7 @@ class Node:
         logger.info(f"Created publisher for topic: {topic}")
 
     async def create_subscriber(
-        self, topic: str, callback: Callable[[Sample], None]
+        self, topic: str, callback: Callable[[Sample], Awaitable[None]]
     ) -> None:
         self.subscribers[topic] = self.session.declare_subscriber(topic, callback)
 

@@ -18,12 +18,18 @@ spec:
         app.kubernetes.io/component: rust-node
     spec:
       containers:
-        - name: rust-node
-          image: "{{ .Values.image.registry }}/{{ .Values.image.repository }}/rust_node:{{ .Values.image.tag | default "latest" }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+        - name: {{ .Chart.Name }}-rust-node
+          image: "{{ .Values.rustNode.image.repository }}:{{ .Values.rustNode.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.rustNode.image.pullPolicy }}
           env:
-            - name: VEHICLE_ID
-              value: "quadcopter-{{ .Release.Name }}-{{ .Release.Revision }}-{{ randAlphaNum 5 | lower }}"
+            - name: RUST_LOG
+              value: "info"
+            - name: QUADCOPTER_ID
+              value: {{ printf "rust-quadcopter-%s" (randAlphaNum 8 | lower) | quote }}
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh", "-c", "export QUADCOPTER_ID=quadcopter-rust-$(hostname | cut -d'-' -f3-)"]
           ports:
             - name: http
               containerPort: 7447
